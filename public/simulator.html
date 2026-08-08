@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Onchain Chaos — Crowd Simulator</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    min-height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #0b0f1a;
+    color: #fff;
+  }
+  body { padding: 24px; }
+  h1 { margin: 0 0 16px; color: #ffd54a; }
+  .panel {
+    max-width: 760px;
+    display: grid;
+    gap: 16px;
+  }
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+  }
+  button {
+    border: 0;
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 16px;
+    font-weight: 900;
+    cursor: pointer;
+  }
+  input {
+    width: 90px;
+    padding: 10px;
+    border-radius: 8px;
+    border: 2px solid #2a3a5c;
+    background: #111a2e;
+    color: #fff;
+    font-size: 16px;
+  }
+  .primary { background: #ffd54a; color: #09111f; }
+  .secondary { background: #c9d6ff; color: #09111f; }
+  .danger { background: #e05252; color: #fff; }
+  .team-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .team {
+    border: 2px solid #2a3a5c;
+    border-radius: 8px;
+    padding: 16px;
+    background: #111a2e;
+  }
+  .team strong {
+    display: block;
+    font-size: 28px;
+    margin-bottom: 8px;
+  }
+  .muted { color: #c9d6ff; }
+</style>
+</head>
+<body>
+  <div class="panel">
+    <h1>Crowd Simulator</h1>
+    <div class="muted">Use this on the laptop to fake a room of phones. Start the round on the host screen first.</div>
+
+    <div class="controls">
+      <label>Fake players <input id="player-count" type="number" min="1" max="60" value="9"></label>
+      <button class="primary" id="spawn">SPAWN</button>
+      <button class="danger" id="clear">CLEAR</button>
+    </div>
+
+    <div class="controls">
+      <label>Tap rate / player <input id="tap-rate" type="number" min="1" max="12" value="3"></label>
+      <button class="primary" id="start">START AUTO-TAP</button>
+      <button class="secondary" id="stop">STOP</button>
+    </div>
+
+    <div class="team-grid">
+      <div class="team"><strong id="count-left">0</strong><span>LEFT players</span></div>
+      <div class="team"><strong id="count-hold">0</strong><span>HOLD players</span></div>
+      <div class="team"><strong id="count-right">0</strong><span>RIGHT players</span></div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const playerCountInput = document.getElementById('player-count');
+    const tapRateInput = document.getElementById('tap-rate');
+    const counts = {
+      left: document.getElementById('count-left'),
+      hold: document.getElementById('count-hold'),
+      right: document.getElementById('count-right'),
+    };
+    const fakePlayers = [];
+    let autoTapTimer = null;
+
+    function updateCounts() {
+      const totals = { left: 0, hold: 0, right: 0 };
+      for (const player of fakePlayers) {
+        if (player.team) totals[player.team]++;
+      }
+      for (const team of ['left', 'hold', 'right']) counts[team].textContent = totals[team];
+    }
+
+    function clearPlayers() {
+      stopAutoTap();
+      for (const player of fakePlayers) player.socket.disconnect();
+      fakePlayers.length = 0;
+      updateCounts();
+    }
+
+    function spawnPlayers() {
+      clearPlayers();
+      const total = Math.max(1, Math.min(60, Number(playerCountInput.value) || 1));
+      for (let i = 0; i < total; i++) {
+        const socket = io();
+        const player = { socket, team: null };
+        socket.on('assigned', ({ team }) => {
+          player.team = team;
+          updateCounts();
+        });
+        fakePlayers.push(player);
+      }
+    }
+
+    function startAutoTap() {
+      stopAutoTap();
+      const tapsPerSecond = Math.max(1, Math.min(12, Number(tapRateInput.value) || 1));
+      autoTapTimer = setInterval(() => {
+        for (const player of fakePlayers) {
+          if (player.team) player.socket.emit('tap');
+        }
+      }, 1000 / tapsPerSecond);
+    }
+
+    function stopAutoTap() {
+      if (autoTapTimer) {
+        clearInterval(autoTapTimer);
+        autoTapTimer = null;
+      }
+    }
+
+    document.getElementById('spawn').addEventListener('click', spawnPlayers);
+    document.getElementById('clear').addEventListener('click', clearPlayers);
+    document.getElementById('start').addEventListener('click', startAutoTap);
+    document.getElementById('stop').addEventListener('click', stopAutoTap);
+  </script>
+</body>
+</html>

@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Onchain Chaos — Controller</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
+  html, body {
+    margin: 0; height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #0b0f1a;
+    color: #fff;
+  }
+  #wrap {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+  #controller-title {
+    text-align: center;
+    padding: 14px 12px 4px;
+    font-size: 6vw;
+    font-weight: 900;
+  }
+  #player-label {
+    text-align: center;
+    font-size: 3.4vw;
+    color: #c9d6ff;
+    min-height: 4.4vw;
+  }
+  #round-state {
+    text-align: center;
+    font-weight: 800;
+    font-size: 4vw;
+    min-height: 5vw;
+    color: #ffd54a;
+  }
+  #mini-bar-outer {
+    margin: 10px 20px;
+    height: 28px;
+    background: #1a2338;
+    border-radius: 8px;
+    position: relative;
+    overflow: hidden;
+    border: 2px solid #2a3a5c;
+  }
+  #mini-bar-fill {
+    position: absolute; left: 0; top: 0; bottom: 0; width: 0%;
+    background: #5b6b8c;
+  }
+  #mini-target-line {
+    position: absolute; top: 0; bottom: 0; width: 3px; background: #ffd54a;
+  }
+  #mini-state {
+    text-align: center;
+    font-weight: 800;
+    font-size: 4vw;
+    min-height: 5vw;
+  }
+  #big-button {
+    flex: 1;
+    margin: 10px 20px 30px;
+    border-radius: 24px;
+    border: none;
+    font-size: 15vw;
+    font-weight: 900;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #big-button:active { filter: brightness(1.3); }
+  #big-button:disabled { opacity: 0.45; filter: grayscale(0.4); }
+  .team-left { background: #2f6fed; }
+  .team-right { background: #ed8f2f; }
+  .team-hold { background: #2fed8f; color: #06210f; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="controller-title">ONCHAIN CHAOS</div>
+  <div id="player-label">Connecting...</div>
+  <div id="round-state">Wait for the host to start</div>
+  <div id="mini-bar-outer"><div id="mini-bar-fill"></div><div id="mini-target-line"></div></div>
+  <div id="mini-state"></div>
+  <button id="big-button">...</button>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  const socket = io();
+  const playerLabel = document.getElementById('player-label');
+  const roundState = document.getElementById('round-state');
+  const bigButton = document.getElementById('big-button');
+  const miniFill = document.getElementById('mini-bar-fill');
+  const miniLine = document.getElementById('mini-target-line');
+  const miniState = document.getElementById('mini-state');
+
+  let myTeam = null;
+  const LABELS = { left: 'LEFT', right: 'RIGHT', hold: 'HOLD' };
+  const EMOJI_LABELS = { left: 'LEFT', right: 'RIGHT', hold: 'HOLD' };
+
+  socket.on('assigned', ({ team }) => {
+    myTeam = team;
+    playerLabel.textContent = 'YOUR ROLE';
+    bigButton.textContent = EMOJI_LABELS[team];
+    bigButton.className = 'team-' + team;
+  });
+
+  socket.on('state', (s) => {
+    if (!myTeam) return;
+    const t = s[myTeam];
+    miniFill.style.width = t.power + '%';
+    miniLine.style.left = t.target + '%';
+    let cls = '#5b6b8c', label = 'LOW — TAP MORE';
+    if (t.power > t.target + 8) { cls = '#e05252'; label = 'HIGH — EASE OFF'; }
+    else if (t.power >= t.target - 8) { cls = '#35d07f'; label = 'GOOD — HOLD IT'; }
+    miniFill.style.background = cls;
+    miniState.textContent = label;
+    miniState.style.color = cls;
+    bigButton.disabled = s.status !== 'playing';
+    if (s.status === 'waiting') roundState.textContent = 'Wait for the host to start';
+    else if (s.status === 'playing') roundState.textContent = 'PLAY NOW';
+    else if (s.status === 'won') roundState.textContent = 'CROWD WINS';
+    else if (s.status === 'dropped') roundState.textContent = 'Coin dropped';
+  });
+
+  function tap(e) {
+    e.preventDefault();
+    if (navigator.vibrate) navigator.vibrate(10);
+    socket.emit('tap');
+  }
+  bigButton.addEventListener('touchstart', tap, { passive: false });
+  bigButton.addEventListener('mousedown', tap);
+</script>
+</body>
+</html>

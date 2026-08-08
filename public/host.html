@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Onchain Chaos — Host Screen</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: #0b0f1a;
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    overflow: hidden;
+    height: 100vh;
+  }
+  h1 {
+    text-align: center;
+    margin: 12px 0 4px;
+    font-size: 2.5vw;
+    letter-spacing: 2px;
+    color: #ffd54a;
+  }
+  #status-banner {
+    text-align: center;
+    font-size: 3vw;
+    font-weight: 900;
+    height: 4vw;
+    color: #ffd54a;
+  }
+  #operator-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    margin: 6px auto 10px;
+    font-size: 1.2vw;
+    color: #c9d6ff;
+  }
+  #operator-row button {
+    border: 0;
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 1.1vw;
+    font-weight: 900;
+    color: #09111f;
+    background: #ffd54a;
+    cursor: pointer;
+  }
+  #operator-row button.secondary {
+    background: #c9d6ff;
+  }
+  #join-url {
+    font-weight: 800;
+    color: #fff;
+  }
+  #track-wrap {
+    position: relative;
+    margin: 10px auto;
+    width: 90vw;
+    height: 22vh;
+    background: linear-gradient(90deg, #14203a, #14203a 82%, #133d2a 82%, #1a5c3d);
+    border-radius: 16px;
+    border: 3px solid #2a3a5c;
+  }
+  #wallet-zone-label {
+    position: absolute;
+    right: 3%;
+    top: 6px;
+    font-size: 1.4vw;
+  }
+  #coin-zone-label {
+    position: absolute;
+    left: 40%;
+    bottom: 8px;
+    font-size: 1.2vw;
+    color: #ffd54a;
+    transform: translateX(-50%);
+  }
+  #robot {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 8vw;
+    transition: none;
+  }
+  #coin {
+    position: absolute;
+    top: 15%;
+    transform: translate(-50%, 0);
+    font-size: 3vw;
+  }
+  #coin.slipping { animation: shake 0.15s infinite; }
+  @keyframes shake { 0%{ margin-left:-3px } 50%{ margin-left:3px } 100%{ margin-left:-3px } }
+
+  #bars {
+    display: flex;
+    justify-content: center;
+    gap: 4vw;
+    margin-top: 3vh;
+  }
+  .bar-block { width: 22vw; text-align: center; }
+  .bar-label { font-size: 1.8vw; font-weight: 800; margin-bottom: 6px; }
+  .bar-outer {
+    position: relative;
+    height: 6vh;
+    background: #1a2338;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 2px solid #2a3a5c;
+  }
+  .bar-fill {
+    position: absolute;
+    left: 0; bottom: 0; top: 0;
+    width: 0%;
+    background: #667;
+    transition: width 0.05s linear, background 0.15s linear;
+  }
+  .bar-fill.under { background: #5b6b8c; }
+  .bar-fill.ontarget { background: #35d07f; }
+  .bar-fill.over { background: #e05252; }
+  .bar-target-line {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 3px;
+    background: #ffd54a;
+  }
+  .bar-state {
+    margin-top: 6px;
+    font-size: 1.6vw;
+    font-weight: 900;
+  }
+  #win-timer-wrap {
+    text-align: center;
+    margin-top: 2vh;
+    font-size: 1.6vw;
+    color: #ffd54a;
+  }
+</style>
+</head>
+<body>
+  <h1>ONCHAIN CHAOS — GET THE COIN IN THE WALLET</h1>
+  <div id="status-banner"></div>
+  <div id="operator-row">
+    <button id="start-button">START ROUND</button>
+    <button class="secondary" id="reset-button">RESET</button>
+    <div>Players: <span id="team-counts">0 / 0 / 0</span></div>
+    <div>Join: <span id="join-url"></span></div>
+  </div>
+
+  <div id="track-wrap">
+    <div id="coin-zone-label">COIN PICKUP</div>
+    <div id="wallet-zone-label">👛 WALLET</div>
+    <div id="robot">🤖</div>
+    <div id="coin">🪙</div>
+  </div>
+
+  <div id="win-timer-wrap">Hold steady: <span id="win-timer">0.0</span>s / 3.0s</div>
+
+  <div id="bars">
+    <div class="bar-block">
+      <div class="bar-label">👈 LEFT</div>
+      <div class="bar-outer"><div class="bar-fill" id="bar-left"></div><div class="bar-target-line" id="line-left"></div></div>
+      <div class="bar-state" id="state-left"></div>
+    </div>
+    <div class="bar-block">
+      <div class="bar-label">✊ HOLD</div>
+      <div class="bar-outer"><div class="bar-fill" id="bar-hold"></div><div class="bar-target-line" id="line-hold"></div></div>
+      <div class="bar-state" id="state-hold"></div>
+    </div>
+    <div class="bar-block">
+      <div class="bar-label">👉 RIGHT</div>
+      <div class="bar-outer"><div class="bar-fill" id="bar-right"></div><div class="bar-target-line" id="line-right"></div></div>
+      <div class="bar-state" id="state-right"></div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const trackWrap = document.getElementById('track-wrap');
+    const robotEl = document.getElementById('robot');
+    const coinEl = document.getElementById('coin');
+    const statusBanner = document.getElementById('status-banner');
+    const winTimerEl = document.getElementById('win-timer');
+    const startButton = document.getElementById('start-button');
+    const resetButton = document.getElementById('reset-button');
+    const teamCountsEl = document.getElementById('team-counts');
+    const joinUrlEl = document.getElementById('join-url');
+
+    joinUrlEl.textContent = window.location.origin + '/controller.html';
+    startButton.addEventListener('click', () => fetch('/api/start', { method: 'POST' }));
+    resetButton.addEventListener('click', () => fetch('/api/reset', { method: 'POST' }));
+
+    function setBar(team, power, target) {
+      const fill = document.getElementById('bar-' + team);
+      const line = document.getElementById('line-' + team);
+      const stateEl = document.getElementById('state-' + team);
+      fill.style.width = power + '%';
+      line.style.left = target + '%';
+
+      let cls = 'under', label = 'UNDER — TAP MORE';
+      if (power > target + 8) { cls = 'over'; label = 'TOO MUCH — EASE OFF'; }
+      else if (power >= target - 8) { cls = 'ontarget'; label = 'ON TARGET ✅'; }
+      fill.className = 'bar-fill ' + cls;
+      stateEl.textContent = label;
+      stateEl.style.color = cls === 'ontarget' ? '#35d07f' : (cls === 'over' ? '#e05252' : '#ffd54a');
+    }
+
+    socket.on('state', (s) => {
+      setBar('left', s.left.power, s.left.target);
+      setBar('right', s.right.power, s.right.target);
+      setBar('hold', s.hold.power, s.hold.target);
+
+      const pct = (s.robot.x / s.trackWidth) * 100;
+      const coinPct = (s.coin.x / s.trackWidth) * 100;
+      robotEl.style.left = pct + '%';
+      coinEl.style.left = coinPct + '%';
+
+      coinEl.classList.toggle('slipping', s.coin.held && s.hold.power < s.hold.target && s.hold.power > 0);
+      coinEl.style.display = s.coinDropped ? 'none' : 'block';
+
+      winTimerEl.textContent = s.winTimer.toFixed(1);
+      if (s.teamCounts) {
+        teamCountsEl.textContent = `${s.teamCounts.left} LEFT / ${s.teamCounts.hold} HOLD / ${s.teamCounts.right} RIGHT`;
+      }
+
+      if (s.status === 'won') {
+        statusBanner.textContent = '🎉 CROWD WINS — MINTING CHAMPION NFT 🎉';
+      } else if (s.status === 'dropped') {
+        statusBanner.textContent = '💥 COIN DROPPED — resetting...';
+      } else if (s.status === 'waiting') {
+        statusBanner.textContent = 'READY — GET PLAYERS IN, THEN START';
+      } else if (!s.coin.held) {
+        statusBanner.textContent = 'GET TO THE COIN — HOLD TO PICK IT UP';
+      } else {
+        statusBanner.textContent = 'COIN GRABBED — DELIVER IT TO THE WALLET';
+      }
+    });
+  </script>
+</body>
+</html>
