@@ -93,22 +93,23 @@
   #wallet-status { margin-top: 10px; font-size: 3.2vw; color: #8e8ea8; min-height: 4vw; }
 
   /* --- game screen --- */
-  #game-screen { flex: 1; }
-  #player-label {
-    text-align: center;
-    font-size: 3.4vw;
-    color: #8e8ea8;
-    min-height: 4.4vw;
+  #game-screen {
+    flex: 1;
+    padding: 24px 20px;
+    max-width: 460px;
+    width: 100%;
+    margin: 0 auto;
   }
   #round-state {
     text-align: center;
     font-weight: 800;
-    font-size: 4vw;
+    font-size: 5.5vw;
     min-height: 5vw;
+    margin-bottom: 10px;
     color: #a78bfa;
   }
   #mini-bar-outer {
-    margin: 10px 20px;
+    margin: 0 0 10px;
     height: 28px;
     background: #191925;
     border-radius: 999px;
@@ -129,13 +130,14 @@
     font-weight: 800;
     font-size: 4vw;
     min-height: 5vw;
+    margin-bottom: 10px;
   }
   #big-button {
     flex: 1;
-    margin: 10px 20px 30px;
+    margin: 0;
     border-radius: 24px;
     border: none;
-    font-size: 12vw;
+    font-size: 9.5vw;
     font-weight: 900;
     color: #fff;
     display: flex;
@@ -224,7 +226,6 @@
   </div>
 
   <div id="game-screen" class="screen">
-    <div id="player-label">YOUR ROLE</div>
     <div id="round-state">PLAY NOW</div>
     <div id="mini-bar-outer"><div id="mini-bar-fill"></div><div id="mini-target-line"></div></div>
     <div id="mini-state"></div>

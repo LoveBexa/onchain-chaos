@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Onchain Chaos — Operator Controls</title>
+<style>
+  :root {
+    --violet: #8b5cf6;
+    --violet-bright: #a78bfa;
+    --bg: #08080c;
+    --panel: #101018;
+    --panel-border: #26263a;
+    --text: #f2f2f8;
+    --text-dim: #8e8ea8;
+    --ok: #35d07f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  #panel {
+    width: 100%;
+    max-width: 420px;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 20px;
+    padding: 28px;
+  }
+  h1 {
+    font-size: 18px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin: 0 0 20px;
+    text-align: center;
+  }
+  #status-line {
+    text-align: center;
+    font-weight: 800;
+    font-size: 20px;
+    color: var(--violet-bright);
+    margin-bottom: 6px;
+  }
+  #sub-line {
+    text-align: center;
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-bottom: 22px;
+  }
+  #mode-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 16px;
+    border-radius: 14px;
+    background: #0c0c14;
+    border: 1px solid var(--panel-border);
+    margin-bottom: 20px;
+  }
+  #mode-label { font-size: 13px; font-weight: 800; }
+  #mode-label.demo { color: var(--violet-bright); }
+  #mode-label.real { color: var(--ok); }
+  button {
+    width: 100%;
+    border: 0;
+    border-radius: 14px;
+    padding: 16px;
+    font-size: 16px;
+    font-weight: 900;
+    font-family: inherit;
+    letter-spacing: 1px;
+    color: #0a0612;
+    background: var(--violet);
+    cursor: pointer;
+    margin-bottom: 12px;
+  }
+  button:active { filter: brightness(1.1); }
+  #mode-toggle-button {
+    background: transparent;
+    color: var(--text-dim);
+    border: 1px solid var(--panel-border);
+    padding: 8px 14px;
+    font-size: 12px;
+    width: auto;
+    margin-bottom: 0;
+  }
+  #start-button:disabled { opacity: 0.4; cursor: default; }
+</style>
+</head>
+<body>
+  <div id="panel">
+    <h1>Operator Controls</h1>
+    <div id="status-line">Loading...</div>
+    <div id="sub-line">0 players joined</div>
+
+    <div id="mode-row">
+      <span id="mode-label" class="demo">MODE: DEMO</span>
+      <button id="mode-toggle-button">Switch to REAL MON</button>
+    </div>
+
+    <button id="start-button">START ROUND</button>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const statusLineEl = document.getElementById('status-line');
+    const subLineEl = document.getElementById('sub-line');
+    const modeLabelEl = document.getElementById('mode-label');
+    const modeToggleButton = document.getElementById('mode-toggle-button');
+    const startButton = document.getElementById('start-button');
+
+    let currentFakeMode = true;
+    function renderMode(fakeMode) {
+      currentFakeMode = fakeMode;
+      modeLabelEl.textContent = fakeMode ? 'MODE: DEMO (free buy-in)' : 'MODE: REAL MON (testnet)';
+      modeLabelEl.className = fakeMode ? 'demo' : 'real';
+      modeToggleButton.textContent = fakeMode ? 'Switch to REAL MON' : 'Switch to DEMO mode';
+    }
+
+    modeToggleButton.addEventListener('click', () => {
+      fetch('/api/mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fakeMode: !currentFakeMode }),
+      });
+    });
+
+    startButton.addEventListener('click', () => fetch('/api/start', { method: 'POST' }));
+
+    const STATUS_LABELS = {
+      waiting: 'LOBBY — waiting to start',
+      playing: 'ROUND IN PROGRESS',
+      won: 'CROWD WON — celebrating',
+      guessing: 'GUESS-YOUR-TAPS window',
+      leaderboard: 'LEADERBOARD showing',
+    };
+
+    function render(s) {
+      if (s.status) statusLineEl.textContent = STATUS_LABELS[s.status] || s.status;
+      const count = (s.players || []).length;
+      const potMon = s.potMon != null ? s.potMon : '0.00';
+      subLineEl.textContent = `${count} player${count === 1 ? '' : 's'} joined — pot: ${potMon} MON`;
+      if (s.fakeMode != null) renderMode(s.fakeMode);
+      startButton.disabled = s.status !== 'waiting' || count === 0;
+    }
+
+    socket.on('lobby', render);
+    socket.on('state', render);
+  </script>
+</body>
+</html>

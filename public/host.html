@@ -99,10 +99,19 @@
     background: var(--violet);
     cursor: pointer;
   }
-  #operator-row button.secondary {
-    background: transparent;
-    color: var(--text-dim);
+  #reset-button {
+    display: block;
+    margin: 2.5vh auto 0;
     border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    padding: 8px 20px;
+    font-size: 0.85vw;
+    font-weight: 800;
+    font-family: inherit;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    background: transparent;
+    cursor: pointer;
   }
 
   #track-panel { padding: 3vh 3vw; margin-bottom: 2.5vh; }
@@ -241,19 +250,6 @@
   .player-chip.team-left { background: var(--team-left); color: #fff; }
   .player-chip.team-right { background: var(--team-right); color: #fff; }
   .player-chip.team-hold { background: var(--team-hold); }
-  #lobby-start-button {
-    border: 0;
-    border-radius: 14px;
-    padding: 18px 56px;
-    font-size: 1.6vw;
-    font-weight: 800;
-    font-family: inherit;
-    letter-spacing: 2px;
-    color: #0a0612;
-    background: var(--violet);
-    cursor: pointer;
-  }
-  #lobby-start-button:disabled { opacity: 0.4; cursor: default; }
   #lobby-pot { font-size: 1.1vw; color: var(--ok); font-weight: 800; margin-bottom: 1.5vh; }
 
   #mode-row {
@@ -269,18 +265,6 @@
   #mode-label { font-size: 1vw; font-weight: 800; letter-spacing: 0.5px; }
   #mode-label.demo { color: var(--violet-bright); }
   #mode-label.real { color: var(--ok); }
-  #mode-toggle-button {
-    border: 0;
-    border-radius: 999px;
-    padding: 8px 16px;
-    font-size: 0.85vw;
-    font-weight: 800;
-    font-family: inherit;
-    letter-spacing: 1px;
-    color: #0a0612;
-    background: var(--violet);
-    cursor: pointer;
-  }
 
   #leaderboard-screen.active { display: flex; }
   #leaderboard-screen {
@@ -360,12 +344,10 @@
     <div id="lobby-url">Loading controller URL...</div>
     <div id="mode-row">
       <span id="mode-label" class="demo">MODE: DEMO (free buy-in, no wallet needed)</span>
-      <button id="mode-toggle-button">Switch to REAL MON</button>
     </div>
     <div id="lobby-player-count">0 players joined</div>
     <div id="lobby-pot">Pot: 0.00 MON</div>
     <div id="lobby-players"></div>
-    <button id="lobby-start-button">START ROUND</button>
   </div>
 
   <div id="leaderboard-screen" class="screen">
@@ -397,8 +379,6 @@
       <img class="title-logo" src="/assets/logo.png" alt="Onchain Chaos" />
       <div id="status-banner"></div>
       <div id="operator-row">
-        <button id="start-button">START ROUND</button>
-        <button class="secondary" id="reset-button">RESET</button>
         <div>Players: <span id="team-counts">0 / 0 / 0</span></div>
       </div>
 
@@ -434,6 +414,8 @@
         <div class="panel-title">Log</div>
         <div id="log-list"></div>
       </div>
+
+      <button id="reset-button">RESET</button>
     </div>
   </div>
 
@@ -443,7 +425,6 @@
     const robotEl = document.getElementById('robot');
     const coinEl = document.getElementById('coin');
     const statusBanner = document.getElementById('status-banner');
-    const startButton = document.getElementById('start-button');
     const resetButton = document.getElementById('reset-button');
     const teamCountsEl = document.getElementById('team-counts');
     const lobbyScreen = document.getElementById('lobby-screen');
@@ -456,29 +437,19 @@
     const lobbyPlayerCountEl = document.getElementById('lobby-player-count');
     const lobbyPotEl = document.getElementById('lobby-pot');
     const lobbyPlayersEl = document.getElementById('lobby-players');
-    const lobbyStartButton = document.getElementById('lobby-start-button');
     const logListEl = document.getElementById('log-list');
     const leaderboardWinnerBanner = document.getElementById('leaderboard-winner-banner');
     const leaderboardBody = document.getElementById('leaderboard-body');
     const modeLabelEl = document.getElementById('mode-label');
-    const modeToggleButton = document.getElementById('mode-toggle-button');
 
-    let currentFakeMode = true;
+    // Read-only here on purpose — START ROUND and the REAL/DEMO toggle live on
+    // host-control.html now, a separate operator-only page not meant for the shared screen.
     function renderMode(fakeMode) {
-      currentFakeMode = fakeMode;
       modeLabelEl.textContent = fakeMode
         ? 'MODE: DEMO (free buy-in, no wallet needed)'
         : 'MODE: REAL MON (testnet, needs MetaMask)';
       modeLabelEl.className = fakeMode ? 'demo' : 'real';
-      modeToggleButton.textContent = fakeMode ? 'Switch to REAL MON' : 'Switch to DEMO mode';
     }
-    modeToggleButton.addEventListener('click', () => {
-      fetch('/api/mode', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fakeMode: !currentFakeMode }),
-      });
-    });
 
     fetch('/api/join-urls')
       .then((res) => res.json())
@@ -499,10 +470,7 @@
       guessingScreen.classList.toggle('active', name === 'guessing');
     }
 
-    function startRound() { fetch('/api/start', { method: 'POST' }); }
-    startButton.addEventListener('click', startRound);
     resetButton.addEventListener('click', () => fetch('/api/reset', { method: 'POST' }));
-    lobbyStartButton.addEventListener('click', startRound);
 
     function escapeHtml(str) {
       const div = document.createElement('div');
@@ -515,7 +483,6 @@
       lobbyPlayersEl.innerHTML = players
         .map((p) => `<div class="player-chip team-${p.team}">${escapeHtml(p.username)}${p.paid ? ' 💰' : ''}</div>`)
         .join('');
-      lobbyStartButton.disabled = players.length === 0;
     }
     socket.on('lobby', ({ players, potMon, fakeMode }) => {
       renderLobbyPlayers(players);
