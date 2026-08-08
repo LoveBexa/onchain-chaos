@@ -13,6 +13,11 @@ const io = new Server(server);
 
 app.use(express.static('public'));
 
+app.get('/api/join-urls', (req, res) => {
+  const urls = getLocalUrls(PORT).map((base) => `${base}/controller.html`);
+  res.json({ urls });
+});
+
 // ---- tunables (adjust these live at the venue based on crowd size) ----
 const TICK_MS = 50; // 20fps game loop
 const TAP_INCREMENT = 12.5; // base power added per tap before team-size scaling
@@ -45,7 +50,9 @@ function freshState() {
 let state = freshState();
 const teamCounts = { left: 0, right: 0, hold: 0 };
 const socketTeam = new Map();
+const players = new Map(); // socket.id -> { username, team }
 let resetTimeout = null;
+let lastTapBroadcast = 0;
 
 function assignTeam() {
   // balance new joiners across the three teams
@@ -54,6 +61,12 @@ function assignTeam() {
   if (teamCounts.left < teamCounts[team]) team = 'left';
   teamCounts[team]++;
   return team;
+}
+
+function sanitizeUsername(raw) {
+  const trimmed = String(raw || '').trim();
+  const cleaned = Array.from(trimmed).filter((ch) => ch.charCodeAt(0) >= 32 || ch === '\t').join('');
+  return (cleaned || 'Player').slice(0, 14);
 }
 
 function resetRound() {
@@ -90,10 +103,25 @@ function onWin() {
   scheduleReset(6000);
 }
 
+function emitLobby() {
+  io.emit('lobby', { players: Array.from(players.values()), teamCounts });
+}
+
 io.on('connection', (socket) => {
-  const team = assignTeam();
-  socketTeam.set(socket.id, team);
-  socket.emit('assigned', { team, targets: TARGETS });
+  // Player is connected but not yet in the game until they submit a username via 'join'.
+  socket.on('join', (payload = {}) => {
+    const username = sanitizeUsername(payload.username);
+    if (!players.has(socket.id)) {
+      const team = assignTeam();
+      socketTeam.set(socket.id, team);
+      players.set(socket.id, { username, team, taps: 0 });
+    } else {
+      players.get(socket.id).username = username;
+    }
+    const { team } = players.get(socket.id);
+    socket.emit('joined', { team, username, targets: TARGETS });
+    emitLobby();
+  });
 
   socket.on('tap', (payload = {}) => {
     if (state.status !== 'playing') return;
@@ -105,12 +133,27 @@ io.on('connection', (socket) => {
     const playersOnTeam = Math.max(1, teamCounts[t]);
     const scaledIncrement = TAP_INCREMENT / playersOnTeam;
     state[t].power = Math.min(100, state[t].power + scaledIncrement);
+    const p = players.get(socket.id);
+    if (p) {
+      p.taps++;
+      // throttled: this feeds a cosmetic activity log on the host screen, not gameplay,
+      // so under a room full of simultaneous tappers we sample it instead of broadcasting every tap.
+      const now = Date.now();
+      if (now - lastTapBroadcast > 120) {
+        lastTapBroadcast = now;
+        io.emit('tapped', { username: p.username, team: t });
+      }
+    }
   });
 
   socket.on('disconnect', () => {
     const t = socketTeam.get(socket.id);
     if (t) teamCounts[t]--;
     socketTeam.delete(socket.id);
+    if (players.has(socket.id)) {
+      players.delete(socket.id);
+      emitLobby();
+    }
   });
 });
 
@@ -179,6 +222,7 @@ function tick() {
   io.emit('state', {
     ...state,
     teamCounts,
+    players: Array.from(players.values()),
     walletZone: WALLET_ZONE,
     coinStartX: COIN_START_X,
     pickupRadius: PICKUP_RADIUS,

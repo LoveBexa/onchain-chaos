@@ -8,25 +8,81 @@
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
   html, body {
     margin: 0; height: 100%;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    background: #0b0f1a;
-    color: #fff;
+    font-family: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+    background: #08080c;
+    color: #f2f2f8;
   }
-  #wrap {
+  #wrap { height: 100%; }
+  .screen {
     height: 100%;
-    display: flex;
+    display: none;
     flex-direction: column;
   }
-  #controller-title {
+  .screen.active { display: flex; }
+
+  .title-logo {
+    display: block;
+    margin: 14px auto 4px;
+    max-width: 82vw;
+    height: auto;
+    filter: drop-shadow(0 0 14px rgba(139, 92, 246, 0.35));
+  }
+  .sub {
     text-align: center;
-    padding: 14px 12px 4px;
+    font-size: 4vw;
+    color: #8e8ea8;
+    padding: 0 8px;
+  }
+
+  /* --- join screen --- */
+  #join-screen { justify-content: center; align-items: stretch; padding: 24px; gap: 16px; }
+  #username-input {
+    margin: 20px 12px 0;
+    padding: 18px;
+    font-size: 6vw;
+    font-family: inherit;
+    text-align: center;
+    border-radius: 14px;
+    border: 3px solid #26263a;
+    background: #101018;
+    color: #fff;
+    outline: none;
+  }
+  #username-input:focus { border-color: #8b5cf6; }
+  #join-button {
+    margin: 16px 12px 0;
+    padding: 20px;
     font-size: 6vw;
     font-weight: 900;
+    font-family: inherit;
+    letter-spacing: 1px;
+    border: none;
+    border-radius: 14px;
+    background: #8b5cf6;
+    color: #0a0612;
   }
+  #join-button:active { filter: brightness(1.1); }
+
+  /* --- lobby wait screen --- */
+  #lobby-screen { justify-content: center; align-items: center; gap: 14px; padding: 24px; text-align: center; }
+  #lobby-username { color: #a78bfa; font-weight: 900; }
+  .waiting-msg { font-size: 4.4vw; font-weight: 800; margin-top: 10px; }
+  .spinner {
+    margin-top: 18px;
+    width: 12vw; height: 12vw;
+    border-radius: 50%;
+    border: 6px solid #26263a;
+    border-top-color: #8b5cf6;
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* --- game screen --- */
+  #game-screen { flex: 1; }
   #player-label {
     text-align: center;
     font-size: 3.4vw;
-    color: #c9d6ff;
+    color: #8e8ea8;
     min-height: 4.4vw;
   }
   #round-state {
@@ -34,23 +90,24 @@
     font-weight: 800;
     font-size: 4vw;
     min-height: 5vw;
-    color: #ffd54a;
+    color: #a78bfa;
   }
   #mini-bar-outer {
     margin: 10px 20px;
     height: 28px;
-    background: #1a2338;
-    border-radius: 8px;
+    background: #191925;
+    border-radius: 999px;
     position: relative;
     overflow: hidden;
-    border: 2px solid #2a3a5c;
+    border: 2px solid #26263a;
   }
   #mini-bar-fill {
     position: absolute; left: 0; top: 0; bottom: 0; width: 0%;
+    border-radius: 999px;
     background: #5b6b8c;
   }
   #mini-target-line {
-    position: absolute; top: 0; bottom: 0; width: 3px; background: #ffd54a;
+    position: absolute; top: 0; bottom: 0; width: 3px; background: #a78bfa;
   }
   #mini-state {
     text-align: center;
@@ -63,7 +120,7 @@
     margin: 10px 20px 30px;
     border-radius: 24px;
     border: none;
-    font-size: 15vw;
+    font-size: 12vw;
     font-weight: 900;
     color: #fff;
     display: flex;
@@ -79,37 +136,88 @@
 </head>
 <body>
 <div id="wrap">
-  <div id="controller-title">ONCHAIN CHAOS</div>
-  <div id="player-label">Connecting...</div>
-  <div id="round-state">Wait for the host to start</div>
-  <div id="mini-bar-outer"><div id="mini-bar-fill"></div><div id="mini-target-line"></div></div>
-  <div id="mini-state"></div>
-  <button id="big-button">...</button>
+
+  <div id="join-screen" class="screen active">
+    <img class="title-logo" src="/assets/logo.png" alt="Onchain Chaos" />
+    <div class="sub">Enter your name to join the room</div>
+    <input id="username-input" maxlength="14" placeholder="Your name" autocomplete="off" autocapitalize="words" />
+    <button id="join-button">JOIN</button>
+  </div>
+
+  <div id="lobby-screen" class="screen">
+    <img class="title-logo" src="/assets/logo.png" alt="Onchain Chaos" />
+    <div class="sub">You're in, <span id="lobby-username"></span>!</div>
+    <div class="waiting-msg">Waiting for the host to start...</div>
+    <div class="spinner"></div>
+  </div>
+
+  <div id="game-screen" class="screen">
+    <div id="player-label">YOUR ROLE</div>
+    <div id="round-state">PLAY NOW</div>
+    <div id="mini-bar-outer"><div id="mini-bar-fill"></div><div id="mini-target-line"></div></div>
+    <div id="mini-state"></div>
+    <button id="big-button">...</button>
+  </div>
+
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
   const socket = io();
-  const playerLabel = document.getElementById('player-label');
+
+  const joinScreen = document.getElementById('join-screen');
+  const lobbyScreen = document.getElementById('lobby-screen');
+  const gameScreen = document.getElementById('game-screen');
+  const usernameInput = document.getElementById('username-input');
+  const joinButton = document.getElementById('join-button');
+  const lobbyUsernameEl = document.getElementById('lobby-username');
+
   const roundState = document.getElementById('round-state');
   const bigButton = document.getElementById('big-button');
   const miniFill = document.getElementById('mini-bar-fill');
   const miniLine = document.getElementById('mini-target-line');
   const miniState = document.getElementById('mini-state');
 
+  let joined = false;
   let myTeam = null;
-  const LABELS = { left: 'LEFT', right: 'RIGHT', hold: 'HOLD' };
   const EMOJI_LABELS = { left: 'LEFT', right: 'RIGHT', hold: 'HOLD' };
 
-  socket.on('assigned', ({ team }) => {
+  function showScreen(name) {
+    for (const el of [joinScreen, lobbyScreen, gameScreen]) el.classList.remove('active');
+    ({ join: joinScreen, lobby: lobbyScreen, game: gameScreen })[name].classList.add('active');
+  }
+
+  function doJoin() {
+    const name = usernameInput.value.trim().slice(0, 14);
+    socket.emit('join', { username: name });
+  }
+  joinButton.addEventListener('click', doJoin);
+  usernameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doJoin(); });
+
+  socket.on('joined', ({ team, username }) => {
+    joined = true;
     myTeam = team;
-    playerLabel.textContent = 'YOUR ROLE';
+    lobbyUsernameEl.textContent = username;
     bigButton.textContent = EMOJI_LABELS[team];
     bigButton.className = 'team-' + team;
+    showScreen('lobby');
+  });
+
+  // if the connection drops and reconnects, re-join automatically so the player doesn't
+  // have to retype their name mid-round
+  socket.on('connect', () => {
+    if (joined) socket.emit('join', { username: lobbyUsernameEl.textContent });
   });
 
   socket.on('state', (s) => {
-    if (!myTeam) return;
+    if (!joined || !myTeam) return;
+
+    if (s.status === 'waiting') {
+      showScreen('lobby');
+      return;
+    }
+
+    showScreen('game');
     const t = s[myTeam];
     miniFill.style.width = t.power + '%';
     miniLine.style.left = t.target + '%';
@@ -120,8 +228,7 @@
     miniState.textContent = label;
     miniState.style.color = cls;
     bigButton.disabled = s.status !== 'playing';
-    if (s.status === 'waiting') roundState.textContent = 'Wait for the host to start';
-    else if (s.status === 'playing') roundState.textContent = 'PLAY NOW';
+    if (s.status === 'playing') roundState.textContent = 'PLAY NOW';
     else if (s.status === 'won') roundState.textContent = 'CROWD WINS';
     else if (s.status === 'dropped') roundState.textContent = 'Coin dropped';
   });

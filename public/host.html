@@ -4,180 +4,304 @@
 <meta charset="UTF-8">
 <title>Onchain Chaos — Host Screen</title>
 <style>
+  :root {
+    --violet: #8b5cf6;
+    --violet-bright: #a78bfa;
+    --bg: #08080c;
+    --panel: #101018;
+    --panel-border: #26263a;
+    --text: #f2f2f8;
+    --text-dim: #8e8ea8;
+    --ok: #35d07f;
+    --warn: #e05252;
+    --under: #5b6b8c;
+    --team-left: #2f6fed;
+    --team-right: #ed8f2f;
+    --team-hold: #2fed8f;
+  }
   * { box-sizing: border-box; }
   body {
     margin: 0;
-    background: #0b0f1a;
-    color: #fff;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
     overflow: hidden;
     height: 100vh;
   }
-  h1 {
-    text-align: center;
-    margin: 12px 0 4px;
-    font-size: 2.5vw;
-    letter-spacing: 2px;
-    color: #ffd54a;
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 20px;
   }
+  .panel-title {
+    font-size: 1vw;
+    font-weight: 800;
+    letter-spacing: 3px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    margin-bottom: 1.2vh;
+  }
+  .badge {
+    position: fixed;
+    top: 18px;
+    left: 18px;
+    background: var(--violet);
+    color: #0a0612;
+    font-weight: 800;
+    font-size: 0.9vw;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 7px 16px;
+    border-radius: 999px;
+  }
+  #container { max-width: 78vw; margin: 0 auto; padding: 3vh 0 2vh; }
+
+  .title-logo {
+    display: block;
+    margin: 1vh auto 2.5vh;
+    height: 9vh;
+    filter: drop-shadow(0 0 18px rgba(139, 92, 246, 0.35));
+  }
+
   #status-banner {
     text-align: center;
-    font-size: 3vw;
-    font-weight: 900;
-    height: 4vw;
-    color: #ffd54a;
+    font-size: 1.5vw;
+    font-weight: 800;
+    min-height: 2.4vw;
+    color: var(--violet-bright);
+    margin-bottom: 1.5vh;
   }
   #operator-row {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 18px;
-    margin: 6px auto 10px;
-    font-size: 1.2vw;
-    color: #c9d6ff;
+    gap: 16px;
+    margin-bottom: 2vh;
+    font-size: 0.95vw;
+    color: var(--text-dim);
   }
   #operator-row button {
     border: 0;
-    border-radius: 8px;
-    padding: 10px 16px;
-    font-size: 1.1vw;
-    font-weight: 900;
-    color: #09111f;
-    background: #ffd54a;
+    border-radius: 10px;
+    padding: 9px 18px;
+    font-size: 0.95vw;
+    font-weight: 800;
+    font-family: inherit;
+    letter-spacing: 1px;
+    color: #0a0612;
+    background: var(--violet);
     cursor: pointer;
   }
   #operator-row button.secondary {
-    background: #c9d6ff;
+    background: transparent;
+    color: var(--text-dim);
+    border: 1px solid var(--panel-border);
   }
-  #join-url {
-    font-weight: 800;
-    color: #fff;
-  }
+
+  #track-panel { padding: 3vh 3vw; margin-bottom: 2.5vh; }
   #track-wrap {
     position: relative;
-    margin: 10px auto;
-    width: 90vw;
-    height: 22vh;
-    background: linear-gradient(90deg, #14203a, #14203a 82%, #133d2a 82%, #1a5c3d);
-    border-radius: 16px;
-    border: 3px solid #2a3a5c;
+    height: 14vh;
   }
-  #wallet-zone-label {
+  #track-line {
     position: absolute;
-    right: 3%;
-    top: 6px;
-    font-size: 1.4vw;
+    left: 4%;
+    right: 4%;
+    top: 50%;
+    border-top: 3px dotted var(--panel-border);
   }
-  #coin-zone-label {
-    position: absolute;
-    left: 40%;
-    bottom: 8px;
-    font-size: 1.2vw;
-    color: #ffd54a;
-    transform: translateX(-50%);
-  }
-  #robot {
+  #robot, #coin, #wallet-icon {
     position: absolute;
     top: 50%;
     transform: translate(-50%, -50%);
-    font-size: 8vw;
-    transition: none;
   }
-  #coin {
-    position: absolute;
-    top: 15%;
-    transform: translate(-50%, 0);
-    font-size: 3vw;
-  }
+  #robot { font-size: 5vw; z-index: 2; }
+  #coin { font-size: 2.4vw; z-index: 1; }
+  #wallet-icon { right: 2%; left: auto; transform: translate(50%, -50%); font-size: 3.2vw; }
   #coin.slipping { animation: shake 0.15s infinite; }
   @keyframes shake { 0%{ margin-left:-3px } 50%{ margin-left:3px } 100%{ margin-left:-3px } }
 
-  #bars {
-    display: flex;
-    justify-content: center;
-    gap: 4vw;
-    margin-top: 3vh;
+  #bars-panel { padding: 2.5vh 3vw; margin-bottom: 2.5vh; }
+  .bar-row { display: flex; align-items: center; gap: 2vw; margin-bottom: 1.6vh; }
+  .bar-row:last-child { margin-bottom: 0; }
+  .bar-label {
+    width: 6vw;
+    font-size: 1vw;
+    font-weight: 800;
+    letter-spacing: 1px;
   }
-  .bar-block { width: 22vw; text-align: center; }
-  .bar-label { font-size: 1.8vw; font-weight: 800; margin-bottom: 6px; }
+  .bar-label.team-left { color: var(--team-left); }
+  .bar-label.team-hold { color: var(--team-hold); }
+  .bar-label.team-right { color: var(--team-right); }
   .bar-outer {
     position: relative;
-    height: 6vh;
-    background: #1a2338;
-    border-radius: 10px;
+    flex: 1;
+    height: 3.2vh;
+    background: #191925;
+    border-radius: 999px;
     overflow: hidden;
-    border: 2px solid #2a3a5c;
+    border: 1px solid var(--panel-border);
   }
   .bar-fill {
     position: absolute;
     left: 0; bottom: 0; top: 0;
     width: 0%;
-    background: #667;
+    border-radius: 999px;
+    background: var(--under);
     transition: width 0.05s linear, background 0.15s linear;
   }
-  .bar-fill.under { background: #5b6b8c; }
-  .bar-fill.ontarget { background: #35d07f; }
-  .bar-fill.over { background: #e05252; }
+  .bar-fill.under { background: var(--under); }
+  .bar-fill.ontarget { background: var(--ok); }
+  .bar-fill.over { background: var(--warn); }
   .bar-target-line {
     position: absolute;
     top: 0; bottom: 0;
     width: 3px;
-    background: #ffd54a;
+    background: var(--violet-bright);
   }
   .bar-state {
-    margin-top: 6px;
-    font-size: 1.6vw;
-    font-weight: 900;
+    width: 9vw;
+    text-align: right;
+    font-size: 0.85vw;
+    font-weight: 800;
   }
-  #win-timer-wrap {
+
+  #log-panel { padding: 2.5vh 3vw; height: 20vh; display: flex; flex-direction: column; }
+  #log-list {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 0.6vh;
+    font-size: 0.95vw;
+  }
+  .log-row { display: flex; gap: 14px; color: var(--text-dim); }
+  .log-time { opacity: 0.6; }
+  .log-name { font-weight: 800; }
+  .log-name.team-left { color: var(--team-left); }
+  .log-name.team-hold { color: var(--team-hold); }
+  .log-name.team-right { color: var(--team-right); }
+
+  .screen { display: none; }
+  .screen.active { display: block; }
+
+  #lobby-screen.active { display: flex; }
+  #lobby-screen {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
     text-align: center;
-    margin-top: 2vh;
-    font-size: 1.6vw;
-    color: #ffd54a;
+    padding: 20px;
   }
+  #lobby-sub { font-size: 1.1vw; color: var(--text-dim); margin-bottom: 1.5vh; }
+  #lobby-url {
+    font-size: 1.3vw;
+    font-weight: 800;
+    color: var(--text);
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 14px;
+    padding: 14px 26px;
+    margin-bottom: 3vh;
+  }
+  #lobby-player-count { font-size: 1.3vw; color: var(--violet-bright); font-weight: 800; margin-bottom: 1.5vh; }
+  #lobby-players {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+    max-width: 80vw;
+    margin-bottom: 4vh;
+    min-height: 4vw;
+  }
+  .player-chip {
+    padding: 8px 16px;
+    border-radius: 999px;
+    font-size: 1vw;
+    font-weight: 800;
+    color: #0a0612;
+  }
+  .player-chip.team-left { background: var(--team-left); color: #fff; }
+  .player-chip.team-right { background: var(--team-right); color: #fff; }
+  .player-chip.team-hold { background: var(--team-hold); }
+  #lobby-start-button {
+    border: 0;
+    border-radius: 14px;
+    padding: 18px 56px;
+    font-size: 1.6vw;
+    font-weight: 800;
+    font-family: inherit;
+    letter-spacing: 2px;
+    color: #0a0612;
+    background: var(--violet);
+    cursor: pointer;
+  }
+  #lobby-start-button:disabled { opacity: 0.4; cursor: default; }
 </style>
 </head>
 <body>
-  <h1>ONCHAIN CHAOS — GET THE COIN IN THE WALLET</h1>
-  <div id="status-banner"></div>
-  <div id="operator-row">
-    <button id="start-button">START ROUND</button>
-    <button class="secondary" id="reset-button">RESET</button>
-    <div>Players: <span id="team-counts">0 / 0 / 0</span></div>
-    <div>Join: <span id="join-url"></span></div>
+
+  <div id="lobby-screen" class="screen active">
+    <div class="badge">LOBBY</div>
+    <img class="title-logo" src="/assets/logo.png" alt="Onchain Chaos" />
+    <div id="lobby-sub">Open this link on your phone to join:</div>
+    <div id="lobby-url">Loading controller URL...</div>
+    <div id="lobby-player-count">0 players joined</div>
+    <div id="lobby-players"></div>
+    <button id="lobby-start-button">START ROUND</button>
   </div>
 
-  <div id="track-wrap">
-    <div id="coin-zone-label">COIN PICKUP</div>
-    <div id="wallet-zone-label">👛 WALLET</div>
-    <div id="robot">🤖</div>
-    <div id="coin">🪙</div>
-  </div>
+  <div id="game-screen" class="screen">
+    <div class="badge">MAIN GAME SCREEN</div>
+    <div id="container">
+      <img class="title-logo" src="/assets/logo.png" alt="Onchain Chaos" />
+      <div id="status-banner"></div>
+      <div id="operator-row">
+        <button id="start-button">START ROUND</button>
+        <button class="secondary" id="reset-button">RESET</button>
+        <div>Players: <span id="team-counts">0 / 0 / 0</span></div>
+        <div>Hold steady: <span id="win-timer">0.0</span>s / 3.0s</div>
+      </div>
 
-  <div id="win-timer-wrap">Hold steady: <span id="win-timer">0.0</span>s / 3.0s</div>
+      <div id="track-panel" class="panel">
+        <div id="track-wrap">
+          <div id="track-line"></div>
+          <div id="robot">🤖</div>
+          <div id="coin">🪙</div>
+          <div id="wallet-icon">👛</div>
+        </div>
+      </div>
 
-  <div id="bars">
-    <div class="bar-block">
-      <div class="bar-label">👈 LEFT</div>
-      <div class="bar-outer"><div class="bar-fill" id="bar-left"></div><div class="bar-target-line" id="line-left"></div></div>
-      <div class="bar-state" id="state-left"></div>
-    </div>
-    <div class="bar-block">
-      <div class="bar-label">✊ HOLD</div>
-      <div class="bar-outer"><div class="bar-fill" id="bar-hold"></div><div class="bar-target-line" id="line-hold"></div></div>
-      <div class="bar-state" id="state-hold"></div>
-    </div>
-    <div class="bar-block">
-      <div class="bar-label">👉 RIGHT</div>
-      <div class="bar-outer"><div class="bar-fill" id="bar-right"></div><div class="bar-target-line" id="line-right"></div></div>
-      <div class="bar-state" id="state-right"></div>
+      <div id="bars-panel" class="panel">
+        <div class="panel-title">Progress</div>
+        <div class="bar-row">
+          <div class="bar-label team-left">LEFT</div>
+          <div class="bar-outer"><div class="bar-fill" id="bar-left"></div><div class="bar-target-line" id="line-left"></div></div>
+          <div class="bar-state" id="state-left"></div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label team-hold">HOLD</div>
+          <div class="bar-outer"><div class="bar-fill" id="bar-hold"></div><div class="bar-target-line" id="line-hold"></div></div>
+          <div class="bar-state" id="state-hold"></div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label team-right">RIGHT</div>
+          <div class="bar-outer"><div class="bar-fill" id="bar-right"></div><div class="bar-target-line" id="line-right"></div></div>
+          <div class="bar-state" id="state-right"></div>
+        </div>
+      </div>
+
+      <div id="log-panel" class="panel">
+        <div class="panel-title">Log</div>
+        <div id="log-list"></div>
+      </div>
     </div>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script>
     const socket = io();
-    const trackWrap = document.getElementById('track-wrap');
     const robotEl = document.getElementById('robot');
     const coinEl = document.getElementById('coin');
     const statusBanner = document.getElementById('status-banner');
@@ -185,11 +309,61 @@
     const startButton = document.getElementById('start-button');
     const resetButton = document.getElementById('reset-button');
     const teamCountsEl = document.getElementById('team-counts');
-    const joinUrlEl = document.getElementById('join-url');
+    const lobbyScreen = document.getElementById('lobby-screen');
+    const gameScreen = document.getElementById('game-screen');
+    const lobbyUrlEl = document.getElementById('lobby-url');
+    const lobbyPlayerCountEl = document.getElementById('lobby-player-count');
+    const lobbyPlayersEl = document.getElementById('lobby-players');
+    const lobbyStartButton = document.getElementById('lobby-start-button');
+    const logListEl = document.getElementById('log-list');
 
-    joinUrlEl.textContent = window.location.origin + '/controller.html';
-    startButton.addEventListener('click', () => fetch('/api/start', { method: 'POST' }));
+    fetch('/api/join-urls')
+      .then((res) => res.json())
+      .then((data) => {
+        lobbyUrlEl.innerHTML = data.urls
+          .map((url) => `<div>${url}</div>`)
+          .join('');
+      })
+      .catch(() => {
+        lobbyUrlEl.textContent = window.location.origin + '/controller.html';
+      });
+
+    function showScreen(name) {
+      lobbyScreen.classList.toggle('active', name === 'lobby');
+      gameScreen.classList.toggle('active', name === 'game');
+    }
+
+    function startRound() { fetch('/api/start', { method: 'POST' }); }
+    startButton.addEventListener('click', startRound);
     resetButton.addEventListener('click', () => fetch('/api/reset', { method: 'POST' }));
+    lobbyStartButton.addEventListener('click', startRound);
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    function renderLobbyPlayers(players) {
+      lobbyPlayerCountEl.textContent = `${players.length} player${players.length === 1 ? '' : 's'} joined`;
+      lobbyPlayersEl.innerHTML = players
+        .map((p) => `<div class="player-chip team-${p.team}">${escapeHtml(p.username)}</div>`)
+        .join('');
+      lobbyStartButton.disabled = players.length === 0;
+    }
+    socket.on('lobby', ({ players }) => renderLobbyPlayers(players));
+
+    const MAX_LOG_ROWS = 8;
+    socket.on('tapped', ({ username, team }) => {
+      const row = document.createElement('div');
+      row.className = 'log-row';
+      const time = new Date().toLocaleTimeString('en-GB', { hour12: false });
+      row.innerHTML = `<span class="log-time">${time}</span><span class="log-name team-${team}">${escapeHtml(username)}</span><span>tapped ${team.toUpperCase()}</span>`;
+      logListEl.appendChild(row);
+      while (logListEl.children.length > MAX_LOG_ROWS) {
+        logListEl.removeChild(logListEl.firstChild);
+      }
+    });
 
     function setBar(team, power, target) {
       const fill = document.getElementById('bar-' + team);
@@ -198,15 +372,18 @@
       fill.style.width = power + '%';
       line.style.left = target + '%';
 
-      let cls = 'under', label = 'UNDER — TAP MORE';
-      if (power > target + 8) { cls = 'over'; label = 'TOO MUCH — EASE OFF'; }
+      let cls = 'under', label = 'UNDER';
+      if (power > target + 8) { cls = 'over'; label = 'TOO MUCH'; }
       else if (power >= target - 8) { cls = 'ontarget'; label = 'ON TARGET ✅'; }
       fill.className = 'bar-fill ' + cls;
       stateEl.textContent = label;
-      stateEl.style.color = cls === 'ontarget' ? '#35d07f' : (cls === 'over' ? '#e05252' : '#ffd54a');
+      stateEl.style.color = cls === 'ontarget' ? 'var(--ok)' : (cls === 'over' ? 'var(--warn)' : 'var(--text-dim)');
     }
 
     socket.on('state', (s) => {
+      showScreen(s.status === 'waiting' ? 'lobby' : 'game');
+      if (s.players) renderLobbyPlayers(s.players);
+
       setBar('left', s.left.power, s.left.target);
       setBar('right', s.right.power, s.right.target);
       setBar('hold', s.hold.power, s.hold.target);
@@ -228,8 +405,6 @@
         statusBanner.textContent = '🎉 CROWD WINS — MINTING CHAMPION NFT 🎉';
       } else if (s.status === 'dropped') {
         statusBanner.textContent = '💥 COIN DROPPED — resetting...';
-      } else if (s.status === 'waiting') {
-        statusBanner.textContent = 'READY — GET PLAYERS IN, THEN START';
       } else if (!s.coin.held) {
         statusBanner.textContent = 'GET TO THE COIN — HOLD TO PICK IT UP';
       } else {
