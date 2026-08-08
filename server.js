@@ -10,6 +10,7 @@ const os = require('os');
 const { Server } = require('socket.io');
 const { createWalletClient, http: viemHttp } = require('viem');
 const { privateKeyToAccount } = require('viem/accounts');
+const QRCode = require('qrcode');
 
 const app = express();
 const server = http.createServer(app);
@@ -17,9 +18,30 @@ const io = new Server(server);
 
 app.use(express.static('public'));
 
+// On Render, RENDER_EXTERNAL_URL is auto-set to the public https://<service>.onrender.com
+// URL — local network IPs (from getLocalUrls) are meaningless inside that container, so prefer
+// it whenever present instead of falling through to internal-only addresses.
+function getPrimaryBaseUrl() {
+  if (process.env.RENDER_EXTERNAL_URL) return process.env.RENDER_EXTERNAL_URL;
+  const urls = getLocalUrls(PORT);
+  return urls[1] || urls[0]; // prefer a LAN IP phones can actually reach over localhost
+}
+
 app.get('/api/join-urls', (req, res) => {
-  const urls = getLocalUrls(PORT).map((base) => `${base}/controller.html`);
+  const bases = process.env.RENDER_EXTERNAL_URL ? [process.env.RENDER_EXTERNAL_URL] : getLocalUrls(PORT);
+  const urls = bases.map((base) => `${base}/controller.html`);
   res.json({ urls });
+});
+
+app.get('/api/qr.png', async (req, res) => {
+  try {
+    const target = `${getPrimaryBaseUrl()}/controller.html`;
+    const png = await QRCode.toBuffer(target, { width: 500, margin: 1 });
+    res.type('png').send(png);
+  } catch (err) {
+    console.error('QR generation failed:', err);
+    res.status(500).end();
+  }
 });
 
 app.get('/api/config', (req, res) => {
@@ -104,6 +126,11 @@ let potWei = 0n;
 const teamCounts = { left: 0, right: 0, hold: 0 };
 const socketTeam = new Map();
 const players = new Map(); // socket.id -> { username, team, taps, address, paid, buyInTx, guess }
+// Round-scoped record of wallet addresses that already paid, keyed separately from socket.id —
+// a mobile MetaMask in-app browser can reload mid-flow and hand back a brand-new socket
+// connection, which would otherwise look like a fresh unpaid player and let someone get
+// double-charged. Address is the durable identity here, not the socket.
+const paidAddresses = new Set();
 let resetTimeout = null;
 let lastTapBroadcast = 0;
 
@@ -129,6 +156,7 @@ function resetRound() {
   }
   state = freshState();
   potWei = 0n;
+  paidAddresses.clear();
   for (const p of players.values()) {
     p.paid = false;
     p.buyInTx = null;
@@ -247,15 +275,20 @@ io.on('connection', (socket) => {
     emitLobby();
   });
 
-  // Player connected a wallet (see controller.html connectWallet()) — just records the address,
-  // moves no funds by itself.
-  socket.on('wallet', (payload = {}) => {
+  // Player connected a wallet (see controller.html connectWallet()) — records the address, and
+  // acks back whether this address already paid this round (see paidAddresses above), so a
+  // client that reconnected mid-flow (fresh socket.id) can self-heal to "already paid" instead
+  // of sending a second buy-in transaction.
+  socket.on('wallet', (payload = {}, ack) => {
     const p = players.get(socket.id);
-    if (!p) return;
+    if (!p) { if (typeof ack === 'function') ack({ alreadyPaid: false }); return; }
     const address = String(payload.address || '');
-    if (!/^0x[a-fA-F0-9]{40}$/.test(address)) return;
+    if (!/^0x[a-fA-F0-9]{40}$/.test(address)) { if (typeof ack === 'function') ack({ alreadyPaid: false }); return; }
     p.address = address;
+    const alreadyPaid = paidAddresses.has(address.toLowerCase());
+    if (alreadyPaid && !p.paid) p.paid = true;
     emitLobby();
+    if (typeof ack === 'function') ack({ alreadyPaid });
   });
 
   // Player's wallet already sent the buy-in tx client-side (MetaMask signs it on their phone) —
@@ -269,6 +302,7 @@ io.on('connection', (socket) => {
     if (!/^0x[a-fA-F0-9]{64}$/.test(txHash)) return;
     p.paid = true;
     p.buyInTx = txHash;
+    paidAddresses.add(p.address.toLowerCase());
     potWei += BUY_IN_WEI;
     emitLobby();
   });

@@ -195,6 +195,14 @@
     padding: 20px;
   }
   #lobby-sub { font-size: 1.1vw; color: var(--text-dim); margin-bottom: 1.5vh; }
+  #lobby-qr {
+    width: 20vh;
+    height: 20vh;
+    background: #fff;
+    padding: 14px;
+    border-radius: 16px;
+    margin-bottom: 2vh;
+  }
   #lobby-url {
     font-size: 1.3vw;
     font-weight: 800;
@@ -313,7 +321,8 @@
   <div id="lobby-screen" class="screen active">
     <div class="badge">LOBBY</div>
     <img class="title-logo" src="/assets/logo.png" alt="Onchain Chaos" />
-    <div id="lobby-sub">Open this link on your phone to join:</div>
+    <div id="lobby-sub">Scan to join on your phone:</div>
+    <img id="lobby-qr" src="/api/qr.png" alt="Scan to join" />
     <div id="lobby-url">Loading controller URL...</div>
     <div id="lobby-player-count">0 players joined</div>
     <div id="lobby-pot">Pot: 0.00 MON</div>

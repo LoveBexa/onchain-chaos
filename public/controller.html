@@ -345,17 +345,21 @@
       connectWalletButton.textContent = 'BOUGHT IN ✅';
       walletStatusEl.textContent = walletAddress ? short(walletAddress) : '';
     } else if (walletAddress) {
+      buyInBusy = false; // new round started (paid reset) — allow buying in again
       connectWalletButton.disabled = false;
       connectWalletButton.textContent = `BUY IN (${config.buyInMon} MON)`;
       walletStatusEl.textContent = `Connected: ${short(walletAddress)}`;
     } else {
+      buyInBusy = false;
       connectWalletButton.disabled = false;
       connectWalletButton.textContent = `CONNECT WALLET & BUY IN (${config.buyInMon} MON)`;
     }
   }
 
+  let buyInBusy = false; // extra guard beyond the disabled attribute — see connectWallet()
+
   async function connectWallet() {
-    if (!config) return;
+    if (!config || buyInBusy) return;
     // Mobile browsers don't have window.ethereum — bounce into MetaMask's own in-app
     // browser, which does, then the user lands back on this same page to finish connecting.
     if (typeof window.ethereum === 'undefined') {
@@ -363,12 +367,24 @@
       window.location.href = `https://metamask.app.link/dapp/${dappUrl}`;
       return;
     }
+    buyInBusy = true;
     connectWalletButton.disabled = true;
     try {
       connectWalletButton.textContent = 'CONNECTING...';
       const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
       walletAddress = accounts[0];
-      socket.emit('wallet', { address: walletAddress });
+
+      // Ack tells us if this address already paid this round — matters because MetaMask's
+      // mobile in-app browser can reload mid-flow, handing back a fresh socket connection that
+      // would otherwise look unpaid and let someone get charged twice for one buy-in.
+      const alreadyPaid = await new Promise((resolve) => {
+        socket.emit('wallet', { address: walletAddress }, (ack) => resolve(!!(ack && ack.alreadyPaid)));
+      });
+      if (alreadyPaid) {
+        connectWalletButton.textContent = 'BOUGHT IN ✅';
+        walletStatusEl.textContent = `Connected: ${short(walletAddress)}`;
+        return;
+      }
 
       const chainId = await window.ethereum.request({ method: 'eth_chainId' });
       if (chainId !== config.chainIdHex) {
@@ -401,9 +417,11 @@
         }],
       });
       socket.emit('buyIn', { txHash });
+      connectWalletButton.textContent = 'BOUGHT IN ✅';
       walletStatusEl.textContent = `Connected: ${short(walletAddress)}`;
     } catch (err) {
       console.error('Wallet connect/buy-in failed', err);
+      buyInBusy = false;
       connectWalletButton.disabled = false;
       connectWalletButton.textContent = `CONNECT WALLET & BUY IN (${config.buyInMon} MON)`;
       walletStatusEl.textContent = 'Failed or cancelled — try again';
