@@ -249,6 +249,32 @@
   #lobby-start-button:disabled { opacity: 0.4; cursor: default; }
   #lobby-pot { font-size: 1.1vw; color: var(--ok); font-weight: 800; margin-bottom: 1.5vh; }
 
+  #mode-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 2vh;
+    padding: 10px 18px;
+    border-radius: 999px;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+  }
+  #mode-label { font-size: 1vw; font-weight: 800; letter-spacing: 0.5px; }
+  #mode-label.demo { color: var(--violet-bright); }
+  #mode-label.real { color: var(--ok); }
+  #mode-toggle-button {
+    border: 0;
+    border-radius: 999px;
+    padding: 8px 16px;
+    font-size: 0.85vw;
+    font-weight: 800;
+    font-family: inherit;
+    letter-spacing: 1px;
+    color: #0a0612;
+    background: var(--violet);
+    cursor: pointer;
+  }
+
   #leaderboard-screen.active { display: flex; }
   #leaderboard-screen {
     flex-direction: column;
@@ -325,6 +351,10 @@
     <div id="lobby-sub">Scan to join on your phone:</div>
     <img id="lobby-qr" src="/api/qr.png" alt="Scan to join" />
     <div id="lobby-url">Loading controller URL...</div>
+    <div id="mode-row">
+      <span id="mode-label" class="demo">MODE: DEMO (free buy-in, no wallet needed)</span>
+      <button id="mode-toggle-button">Switch to REAL MON</button>
+    </div>
     <div id="lobby-player-count">0 players joined</div>
     <div id="lobby-pot">Pot: 0.00 MON</div>
     <div id="lobby-players"></div>
@@ -425,6 +455,25 @@
     const logListEl = document.getElementById('log-list');
     const leaderboardWinnerBanner = document.getElementById('leaderboard-winner-banner');
     const leaderboardBody = document.getElementById('leaderboard-body');
+    const modeLabelEl = document.getElementById('mode-label');
+    const modeToggleButton = document.getElementById('mode-toggle-button');
+
+    let currentFakeMode = true;
+    function renderMode(fakeMode) {
+      currentFakeMode = fakeMode;
+      modeLabelEl.textContent = fakeMode
+        ? 'MODE: DEMO (free buy-in, no wallet needed)'
+        : 'MODE: REAL MON (testnet, needs MetaMask)';
+      modeLabelEl.className = fakeMode ? 'demo' : 'real';
+      modeToggleButton.textContent = fakeMode ? 'Switch to REAL MON' : 'Switch to DEMO mode';
+    }
+    modeToggleButton.addEventListener('click', () => {
+      fetch('/api/mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fakeMode: !currentFakeMode }),
+      });
+    });
 
     fetch('/api/join-urls')
       .then((res) => res.json())
@@ -463,9 +512,10 @@
         .join('');
       lobbyStartButton.disabled = players.length === 0;
     }
-    socket.on('lobby', ({ players, potMon }) => {
+    socket.on('lobby', ({ players, potMon, fakeMode }) => {
       renderLobbyPlayers(players);
       if (potMon != null) lobbyPotEl.textContent = `Pot: ${potMon} MON`;
+      if (fakeMode != null) renderMode(fakeMode);
     });
 
     function renderLeaderboard(s) {
@@ -517,6 +567,7 @@
     socket.on('state', (s) => {
       if (s.players) renderLobbyPlayers(s.players);
       if (s.potMon != null) lobbyPotEl.textContent = `Pot: ${s.potMon} MON`;
+      if (s.fakeMode != null) renderMode(s.fakeMode);
 
       if (s.status === 'waiting') { showScreen('lobby'); return; }
       if (s.status === 'won') { showScreen('celebration'); return; }

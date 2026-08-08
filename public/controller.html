@@ -290,16 +290,21 @@
   let hasGuessed = false;
   let walletAddress = null;
   let config = null;
+  // DEMO mode: free buy-in, no wallet needed, for presentation safety — see server.js's fakeMode.
+  // Defaults true until /api/config or a live 'state'/'lobby' broadcast says otherwise.
+  let fakeMode = true;
   const EMOJI_LABELS = { left: 'LEFT', right: 'RIGHT', hold: 'HOLD' };
 
   fetch('/api/config')
     .then((r) => r.json())
     .then((c) => {
       config = c;
-      if (!c.potWalletAddress) walletSection.style.display = 'none'; // pot wallet not set up yet on the server
-      else connectWalletButton.textContent = `CONNECT WALLET & BUY IN (${c.buyInMon} MON)`;
+      fakeMode = !!c.fakeMode;
+      // hide the buy-in section only if REAL mode is selected but the server has no pot wallet
+      // configured — DEMO mode never needs one, so the button always shows in that case.
+      if (!fakeMode && !c.potWalletAddress) walletSection.style.display = 'none';
     })
-    .catch(() => { walletSection.style.display = 'none'; });
+    .catch(() => {});
 
   function short(addr) { return addr ? addr.slice(0, 6) + '…' + addr.slice(-4) : ''; }
 
@@ -338,14 +343,20 @@
   });
 
   function updateWalletUI(mySelf) {
-    if (!config || !config.potWalletAddress) return;
+    if (!config) return;
+    if (!fakeMode && !config.potWalletAddress) return;
     const paid = mySelf && mySelf.paid;
     if (paid) {
       connectWalletButton.disabled = true;
-      connectWalletButton.textContent = 'BOUGHT IN ✅';
-      walletStatusEl.textContent = walletAddress ? short(walletAddress) : '';
-    } else if (walletAddress) {
+      connectWalletButton.textContent = fakeMode ? 'BOUGHT IN ✅ (DEMO)' : 'BOUGHT IN ✅';
+      walletStatusEl.textContent = fakeMode ? '' : (walletAddress ? short(walletAddress) : '');
+    } else if (fakeMode) {
       buyInBusy = false; // new round started (paid reset) — allow buying in again
+      connectWalletButton.disabled = false;
+      connectWalletButton.textContent = `BUY IN — DEMO (${config.buyInMon} MON, not real)`;
+      walletStatusEl.textContent = '';
+    } else if (walletAddress) {
+      buyInBusy = false;
       connectWalletButton.disabled = false;
       connectWalletButton.textContent = `BUY IN (${config.buyInMon} MON)`;
       walletStatusEl.textContent = `Connected: ${short(walletAddress)}`;
@@ -357,6 +368,21 @@
   }
 
   let buyInBusy = false; // extra guard beyond the disabled attribute — see connectWallet()
+
+  function fakeBuyIn() {
+    if (buyInBusy) return;
+    buyInBusy = true;
+    connectWalletButton.disabled = true;
+    connectWalletButton.textContent = 'BUYING IN (DEMO)...';
+    socket.emit('fakeBuyIn');
+    // no ack needed — the next 'lobby'/'state' broadcast reports paid:true and updateWalletUI
+    // takes it from there, same as the real flow does after a transaction confirms.
+  }
+
+  function handleBuyInClick() {
+    if (fakeMode) fakeBuyIn();
+    else connectWallet();
+  }
 
   async function connectWallet() {
     if (!config || buyInBusy) return;
@@ -427,7 +453,7 @@
       walletStatusEl.textContent = 'Failed or cancelled — try again';
     }
   }
-  connectWalletButton.addEventListener('click', connectWallet);
+  connectWalletButton.addEventListener('click', handleBuyInClick);
 
   guessSubmitButton.addEventListener('click', () => {
     const val = Number(guessInput.value);
@@ -440,6 +466,7 @@
 
   socket.on('state', (s) => {
     if (!joined || !myTeam) return;
+    if (s.fakeMode != null) fakeMode = !!s.fakeMode;
 
     if (s.status === 'waiting') {
       hasGuessed = false;

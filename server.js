@@ -18,6 +18,12 @@ const io = new Server(server);
 
 app.use(express.static('public'));
 
+// Demo-safety switch for the presentation: DEMO mode lets players buy in for free with no
+// wallet/MetaMask at all (same UI, same pot/leaderboard flow, no real transaction); REAL mode is
+// the actual MetaMask + testnet MON flow. Defaults to DEMO — flip to REAL deliberately via the
+// host screen's toggle (POST /api/mode) when you want to prove the on-chain payout works live.
+let fakeMode = true;
+
 // On Render, RENDER_EXTERNAL_URL is auto-set to the public https://<service>.onrender.com
 // URL — local network IPs (from getLocalUrls) are meaningless inside that container, so prefer
 // it whenever present instead of falling through to internal-only addresses.
@@ -46,6 +52,7 @@ app.get('/api/qr.png', async (req, res) => {
 
 app.get('/api/config', (req, res) => {
   res.json({
+    fakeMode,
     potWalletAddress: payoutAccount ? payoutAccount.address : null,
     buyInWei: BUY_IN_WEI.toString(),
     buyInMon: BUY_IN_MON,
@@ -53,6 +60,15 @@ app.get('/api/config', (req, res) => {
     rpcUrl: MONAD_RPC_URL,
     explorerUrl: MONAD_EXPLORER_URL,
   });
+});
+
+// Operator toggle from the host screen — switches DEMO/REAL for the next buy-in window. Not
+// locked to a round boundary on purpose: intended to be flipped only while sitting in the lobby,
+// before opening buy-ins to the room.
+app.post('/api/mode', express.json(), (req, res) => {
+  fakeMode = !!req.body.fakeMode;
+  console.log(`Mode switched to ${fakeMode ? 'DEMO (fake buy-in)' : 'REAL (MetaMask + testnet MON)'}`);
+  res.json({ fakeMode });
 });
 
 // ---- tunables (adjust these live at the venue based on crowd size) ----
@@ -219,6 +235,7 @@ function finishGuessing() {
       guess: p.guess,
       diff: p.guess == null ? Infinity : Math.abs(p.guess - p.taps),
       address: p.address || null,
+      isFake: p.buyInTx === 'DEMO',
     }))
     .sort((a, b) => a.diff - b.diff);
 
@@ -239,6 +256,11 @@ async function onPayout(winner) {
     return;
   }
   const potMon = (Number(potWei) / 1e18).toFixed(2);
+  if (winner.isFake) {
+    console.log(`>>> DEMO PAYOUT <<< ${winner.username} guessed closest and "won" ${potMon} MON — demo mode, no real transaction sent.`);
+    state.payoutTx = 'DEMO';
+    return;
+  }
   if (!payoutClient || !winner.address) {
     console.log(
       `>>> PAYOUT HOOK <<< ${winner.username} would win ${potMon} MON, but ` +
@@ -257,7 +279,7 @@ async function onPayout(winner) {
 }
 
 function emitLobby() {
-  io.emit('lobby', { players: Array.from(players.values()), teamCounts, potMon: (Number(potWei) / 1e18).toFixed(2) });
+  io.emit('lobby', { players: Array.from(players.values()), teamCounts, potMon: (Number(potWei) / 1e18).toFixed(2), fakeMode });
 }
 
 io.on('connection', (socket) => {
@@ -306,6 +328,19 @@ io.on('connection', (socket) => {
     p.paid = true;
     p.buyInTx = txHash;
     paidAddresses.add(p.address.toLowerCase());
+    potWei += BUY_IN_WEI;
+    emitLobby();
+  });
+
+  // DEMO-mode buy-in — no wallet, no transaction, just marks the player paid so the rest of the
+  // pot/win/leaderboard flow behaves identically to the real thing for presentation purposes.
+  socket.on('fakeBuyIn', () => {
+    if (!fakeMode) return;
+    if (state.status !== 'waiting') return;
+    const p = players.get(socket.id);
+    if (!p || p.paid) return;
+    p.paid = true;
+    p.buyInTx = 'DEMO';
     potWei += BUY_IN_WEI;
     emitLobby();
   });
@@ -428,6 +463,7 @@ function tick() {
     trackWidth: TRACK_WIDTH,
     potMon: (Number(potWei) / 1e18).toFixed(2),
     buyInMon: BUY_IN_MON,
+    fakeMode,
   });
 }
 
