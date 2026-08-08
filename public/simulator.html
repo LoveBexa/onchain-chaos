@@ -82,6 +82,15 @@
       <button class="secondary" id="stop">STOP</button>
     </div>
 
+    <div class="controls muted">
+      Toggle mid-round to fake a crowd leaning one way, e.g. uncheck LEFT once you reach the coin so RIGHT pulls it home:
+    </div>
+    <div class="controls">
+      <label><input type="checkbox" id="tap-left" checked> Tap LEFT</label>
+      <label><input type="checkbox" id="tap-hold" checked> Tap HOLD</label>
+      <label><input type="checkbox" id="tap-right" checked> Tap RIGHT</label>
+    </div>
+
     <div class="team-grid">
       <div class="team"><strong id="count-left">0</strong><span>LEFT players</span></div>
       <div class="team"><strong id="count-hold">0</strong><span>HOLD players</span></div>
@@ -122,7 +131,12 @@
       for (let i = 0; i < total; i++) {
         const socket = io();
         const player = { socket, team: null };
-        socket.on('assigned', ({ team }) => {
+        const username = `Bot${i + 1}`;
+        // current server.js needs an explicit 'join' with a username before it assigns a team
+        // (and replies 'joined', not the old 'assigned') — re-join on every reconnect too, same
+        // as controller.html does, so a dropped fake socket doesn't just sit team-less forever.
+        socket.on('connect', () => socket.emit('join', { username }));
+        socket.on('joined', ({ team }) => {
           player.team = team;
           updateCounts();
         });
@@ -130,12 +144,18 @@
       }
     }
 
+    const teamToggles = {
+      left: document.getElementById('tap-left'),
+      hold: document.getElementById('tap-hold'),
+      right: document.getElementById('tap-right'),
+    };
+
     function startAutoTap() {
       stopAutoTap();
       const tapsPerSecond = Math.max(1, Math.min(12, Number(tapRateInput.value) || 1));
       autoTapTimer = setInterval(() => {
         for (const player of fakePlayers) {
-          if (player.team) player.socket.emit('tap');
+          if (player.team && teamToggles[player.team].checked) player.socket.emit('tap');
         }
       }, 1000 / tapsPerSecond);
     }

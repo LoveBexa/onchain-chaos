@@ -63,7 +63,10 @@ const FORCE_CONST = 0.016; // how hard power translates into robot velocity
 const FRICTION = 0.86; // per-tick velocity damping (glide + slow down)
 const MAX_SPEED = 14; // prevents the crowd from launching past the targets
 const TRACK_WIDTH = 1000; // arbitrary units, robot x ranges 0..TRACK_WIDTH
-const COIN_START_X = 430;
+const ROBOT_START_X = 500; // middle of the track — robot must travel LEFT to the coin, then RIGHT
+                            // to the wallet, so both LEFT and RIGHT teams have a real job. A robot
+                            // that starts left of the coin never needs LEFT team's push at all.
+const COIN_START_X = 150;
 const PICKUP_RADIUS = 45;
 const WALLET_ZONE = { start: 820, end: 950 };
 const BALANCE_TOLERANCE = 15; // |left-right| must be under this to count as "steady"
@@ -109,7 +112,7 @@ function freshState() {
     left: { power: 0, target: TARGETS.left },
     right: { power: 0, target: TARGETS.right },
     hold: { power: 0, target: TARGETS.hold },
-    robot: { x: 50, v: 0 },
+    robot: { x: ROBOT_START_X, v: 0 },
     coin: { x: COIN_START_X, held: false },
     coinDropped: false,
     winTimer: 0,

@@ -116,9 +116,10 @@
     transform: translate(-50%, -50%);
   }
   #robot { font-size: 5vw; z-index: 2; }
-  #coin { font-size: 2.4vw; z-index: 1; }
+  #coin { font-size: 4.4vw; z-index: 1; transition: filter 0.3s, opacity 0.3s; }
   #wallet-icon { right: 2%; left: auto; transform: translate(50%, -50%); font-size: 3.2vw; }
   #coin.slipping { animation: shake 0.15s infinite; }
+  #coin.dropped { filter: grayscale(0.7) brightness(0.65); opacity: 0.9; animation: none; }
   @keyframes shake { 0%{ margin-left:-3px } 50%{ margin-left:3px } 100%{ margin-left:-3px } }
 
   #bars-panel { padding: 2.5vh 3vw; margin-bottom: 2.5vh; }
@@ -537,7 +538,9 @@
       coinEl.style.left = coinPct + '%';
 
       coinEl.classList.toggle('slipping', s.coin.held && s.hold.power < s.hold.target && s.hold.power > 0);
-      coinEl.style.display = s.coinDropped ? 'none' : 'block';
+      // stays visible (dimmed) when dropped instead of vanishing, so the room can actually
+      // see it land and understand what happened, instead of it just disappearing.
+      coinEl.classList.toggle('dropped', s.coinDropped);
 
       winTimerEl.textContent = s.winTimer.toFixed(1);
       if (s.teamCounts) {
