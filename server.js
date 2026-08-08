@@ -1,11 +1,15 @@
 // ONCHAIN CHAOS — game server
-// Off-chain real-time layer only. Nothing here touches Monad yet.
-// When the crowd wins, onWin() below is the hook where the mint call goes later.
+// Off-chain real-time layer, plus the win -> guess-your-taps -> leaderboard -> MON payout loop.
+// The payout wallet is server-held (same pattern as the GMBoard proof-of-concept): set
+// POT_WALLET_PRIVATE_KEY in the environment to make payouts real; leave it unset and the app
+// still runs end-to-end, it just logs what *would* have been paid out (see onPayout() below).
 
 const express = require('express');
 const http = require('http');
 const os = require('os');
 const { Server } = require('socket.io');
+const { createWalletClient, http: viemHttp } = require('viem');
+const { privateKeyToAccount } = require('viem/accounts');
 
 const app = express();
 const server = http.createServer(app);
@@ -16,6 +20,17 @@ app.use(express.static('public'));
 app.get('/api/join-urls', (req, res) => {
   const urls = getLocalUrls(PORT).map((base) => `${base}/controller.html`);
   res.json({ urls });
+});
+
+app.get('/api/config', (req, res) => {
+  res.json({
+    potWalletAddress: payoutAccount ? payoutAccount.address : null,
+    buyInWei: BUY_IN_WEI.toString(),
+    buyInMon: BUY_IN_MON,
+    chainIdHex: MONAD_CHAIN_ID_HEX,
+    rpcUrl: MONAD_RPC_URL,
+    explorerUrl: MONAD_EXPLORER_URL,
+  });
 });
 
 // ---- tunables (adjust these live at the venue based on crowd size) ----
@@ -34,6 +49,39 @@ const WIN_HOLD_SECONDS = 3;
 
 const TARGETS = { left: 70, right: 70, hold: 60 };
 
+const WIN_CELEBRATION_MS = 2500; // how long "CROWD WINS" shows before the guess prompt appears
+const GUESS_WINDOW_MS = 20000; // how long players have to submit a tap-guess
+const LEADERBOARD_DISPLAY_MS = 15000; // how long the leaderboard stays up before the next lobby
+
+// ---- Monad testnet + pot wallet config ----
+const MONAD_CHAIN_ID_HEX = '0x279f'; // 10143
+const MONAD_RPC_URL = 'https://testnet-rpc.monad.xyz';
+const MONAD_EXPLORER_URL = 'https://testnet.monadexplorer.com';
+const BUY_IN_MON = '0.5';
+const BUY_IN_WEI = 500000000000000000n; // 0.5 MON, as a BigInt to avoid float precision issues
+
+const monadTestnet = {
+  id: 10143,
+  name: 'Monad Testnet',
+  nativeCurrency: { name: 'MON', symbol: 'MON', decimals: 18 },
+  rpcUrls: { default: { http: [MONAD_RPC_URL] } },
+};
+
+// Only set up if POT_WALLET_PRIVATE_KEY is present in the environment — see HANDOFF.md for setup.
+let payoutAccount = null;
+let payoutClient = null;
+if (process.env.POT_WALLET_PRIVATE_KEY) {
+  payoutAccount = privateKeyToAccount(process.env.POT_WALLET_PRIVATE_KEY);
+  payoutClient = createWalletClient({
+    account: payoutAccount,
+    chain: monadTestnet,
+    transport: viemHttp(MONAD_RPC_URL),
+  });
+  console.log(`Pot wallet configured: ${payoutAccount.address} — payouts are LIVE.`);
+} else {
+  console.log('POT_WALLET_PRIVATE_KEY not set — buy-in/payout will run in log-only stub mode.');
+}
+
 function freshState() {
   return {
     left: { power: 0, target: TARGETS.left },
@@ -43,14 +91,19 @@ function freshState() {
     coin: { x: COIN_START_X, held: false },
     coinDropped: false,
     winTimer: 0,
-    status: 'waiting', // waiting | playing | won | dropped
+    status: 'waiting', // waiting | playing | won | dropped | guessing | leaderboard
+    guessDeadline: null,
+    leaderboard: null,
+    winnerUsername: null,
+    payoutTx: null,
   };
 }
 
 let state = freshState();
+let potWei = 0n;
 const teamCounts = { left: 0, right: 0, hold: 0 };
 const socketTeam = new Map();
-const players = new Map(); // socket.id -> { username, team }
+const players = new Map(); // socket.id -> { username, team, taps, address, paid, buyInTx, guess }
 let resetTimeout = null;
 let lastTapBroadcast = 0;
 
@@ -75,7 +128,14 @@ function resetRound() {
     resetTimeout = null;
   }
   state = freshState();
+  potWei = 0n;
+  for (const p of players.values()) {
+    p.paid = false;
+    p.buyInTx = null;
+    p.guess = null;
+  }
   io.emit('reset');
+  emitLobby();
 }
 
 function startRound() {
@@ -83,8 +143,10 @@ function startRound() {
     clearTimeout(resetTimeout);
     resetTimeout = null;
   }
+  const wasStatus = state.status;
   state = freshState();
   state.status = 'playing';
+  if (wasStatus !== 'waiting') potWei = 0n; // safety net; normally already cleared by resetRound
   io.emit('reset');
 }
 
@@ -100,11 +162,71 @@ function onWin() {
   state.status = 'won';
   console.log('>>> CROWD WON <<< hook the Monad mint call here (onWin in server.js)');
   // TODO next checkpoint: call the contract to mint the champion NFT.
-  scheduleReset(6000);
+  setTimeout(startGuessingPhase, WIN_CELEBRATION_MS);
+}
+
+function startGuessingPhase() {
+  for (const p of players.values()) p.guess = null;
+  state.status = 'guessing';
+  state.guessDeadline = Date.now() + GUESS_WINDOW_MS;
+}
+
+function maybeFinishGuessing() {
+  if (state.status !== 'guessing') return;
+  const everyoneGuessed =
+    players.size > 0 && Array.from(players.values()).every((p) => p.guess != null);
+  if (!everyoneGuessed && Date.now() < state.guessDeadline) return;
+  finishGuessing();
+}
+
+function finishGuessing() {
+  const ranked = Array.from(players.values())
+    .map((p) => ({
+      username: p.username,
+      team: p.team,
+      taps: p.taps,
+      guess: p.guess,
+      diff: p.guess == null ? Infinity : Math.abs(p.guess - p.taps),
+      address: p.address || null,
+    }))
+    .sort((a, b) => a.diff - b.diff);
+
+  const winner = ranked.length && Number.isFinite(ranked[0].diff) ? ranked[0] : null;
+
+  state.status = 'leaderboard';
+  state.leaderboard = ranked;
+  state.winnerUsername = winner ? winner.username : null;
+  state.potMon = (Number(potWei) / 1e18).toFixed(2);
+
+  if (winner) onPayout(winner);
+  scheduleReset(LEADERBOARD_DISPLAY_MS);
+}
+
+async function onPayout(winner) {
+  if (potWei <= 0n) {
+    console.log(`>>> PAYOUT <<< ${winner.username} guessed closest, but the pot is empty this round (no buy-ins) — nothing to send.`);
+    return;
+  }
+  const potMon = (Number(potWei) / 1e18).toFixed(2);
+  if (!payoutClient || !winner.address) {
+    console.log(
+      `>>> PAYOUT HOOK <<< ${winner.username} would win ${potMon} MON, but ` +
+      `${!payoutClient ? 'POT_WALLET_PRIVATE_KEY is not set' : "the winner never connected a wallet"} — ` +
+      `see HANDOFF.md for setup. (onPayout in server.js)`
+    );
+    return;
+  }
+  try {
+    const hash = await payoutClient.sendTransaction({ to: winner.address, value: potWei });
+    console.log(`>>> PAYOUT SENT <<< ${winner.username} received ${potMon} MON — tx ${hash}`);
+    state.payoutTx = hash;
+  } catch (err) {
+    console.error('Payout transaction failed:', err);
+  }
 }
 
 function emitLobby() {
-  io.emit('lobby', { players: Array.from(players.values()), teamCounts });
+  io.emit('lobby', { players: Array.from(players.values()), teamCounts, potMon: (Number(potWei) / 1e18).toFixed(2) });
 }
 
 io.on('connection', (socket) => {
@@ -114,13 +236,51 @@ io.on('connection', (socket) => {
     if (!players.has(socket.id)) {
       const team = assignTeam();
       socketTeam.set(socket.id, team);
-      players.set(socket.id, { username, team, taps: 0 });
+      players.set(socket.id, {
+        username, team, taps: 0, address: null, paid: false, buyInTx: null, guess: null,
+      });
     } else {
       players.get(socket.id).username = username;
     }
     const { team } = players.get(socket.id);
     socket.emit('joined', { team, username, targets: TARGETS });
     emitLobby();
+  });
+
+  // Player connected a wallet (see controller.html connectWallet()) — just records the address,
+  // moves no funds by itself.
+  socket.on('wallet', (payload = {}) => {
+    const p = players.get(socket.id);
+    if (!p) return;
+    const address = String(payload.address || '');
+    if (!/^0x[a-fA-F0-9]{40}$/.test(address)) return;
+    p.address = address;
+    emitLobby();
+  });
+
+  // Player's wallet already sent the buy-in tx client-side (MetaMask signs it on their phone) —
+  // this just tells the server to count them into this round's pot. Trust-based for demo speed:
+  // we take the reported txHash at face value rather than watching the chain for confirmation.
+  socket.on('buyIn', (payload = {}) => {
+    if (state.status !== 'waiting') return; // buy-in window is the lobby, before START
+    const p = players.get(socket.id);
+    if (!p || !p.address || p.paid) return;
+    const txHash = String(payload.txHash || '');
+    if (!/^0x[a-fA-F0-9]{64}$/.test(txHash)) return;
+    p.paid = true;
+    p.buyInTx = txHash;
+    potWei += BUY_IN_WEI;
+    emitLobby();
+  });
+
+  socket.on('guess', (payload = {}) => {
+    if (state.status !== 'guessing') return;
+    const p = players.get(socket.id);
+    if (!p || p.guess != null) return;
+    const n = Number(payload.guess);
+    if (!Number.isFinite(n) || n < 0) return;
+    p.guess = Math.round(n);
+    maybeFinishGuessing();
   });
 
   socket.on('tap', (payload = {}) => {
@@ -217,6 +377,8 @@ function tick() {
     } else {
       state.winTimer = 0;
     }
+  } else if (state.status === 'guessing') {
+    maybeFinishGuessing();
   }
 
   io.emit('state', {
@@ -227,6 +389,8 @@ function tick() {
     coinStartX: COIN_START_X,
     pickupRadius: PICKUP_RADIUS,
     trackWidth: TRACK_WIDTH,
+    potMon: (Number(potWei) / 1e18).toFixed(2),
+    buyInMon: BUY_IN_MON,
   });
 }
 

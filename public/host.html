@@ -238,6 +238,74 @@
     cursor: pointer;
   }
   #lobby-start-button:disabled { opacity: 0.4; cursor: default; }
+  #lobby-pot { font-size: 1.1vw; color: var(--ok); font-weight: 800; margin-bottom: 1.5vh; }
+
+  #leaderboard-screen.active { display: flex; }
+  #leaderboard-screen {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    text-align: center;
+    padding: 20px;
+  }
+  #leaderboard-winner-banner {
+    font-size: 2.2vw;
+    font-weight: 900;
+    color: #ffd54a;
+    margin-bottom: 3vh;
+    text-shadow: 0 0 20px rgba(255, 213, 74, 0.4);
+  }
+  #leaderboard-table { width: 60vw; border-collapse: collapse; font-size: 1.1vw; }
+  #leaderboard-table th, #leaderboard-table td {
+    padding: 10px 16px;
+    text-align: left;
+    border-bottom: 1px solid var(--panel-border);
+  }
+  #leaderboard-table th { color: var(--text-dim); text-transform: uppercase; font-size: 0.85vw; letter-spacing: 1px; }
+  .leaderboard-row.winner { background: rgba(255, 213, 74, 0.08); }
+  .leaderboard-row.winner td:first-child { color: #ffd54a; font-weight: 900; }
+  .leaderboard-name { font-weight: 800; }
+  .leaderboard-name.team-left { color: var(--team-left); }
+  .leaderboard-name.team-hold { color: var(--team-hold); }
+  .leaderboard-name.team-right { color: var(--team-right); }
+
+  #celebration-screen.active, #guessing-screen.active { display: flex; }
+  #celebration-screen, #guessing-screen {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    text-align: center;
+    padding: 20px;
+  }
+  #celebration-screen { background: radial-gradient(circle at 50% 40%, rgba(255, 213, 74, 0.12), transparent 60%); }
+  .celebration-text {
+    font-size: 9vw;
+    font-weight: 900;
+    color: #ffd54a;
+    text-shadow: 0 0 40px rgba(255, 213, 74, 0.6);
+    animation: pulse 1s ease-in-out infinite;
+  }
+  .celebration-sub { font-size: 2vw; color: var(--violet-bright); margin-top: 3vh; font-weight: 800; }
+  @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+
+  #guessing-screen { background: radial-gradient(circle at 50% 40%, rgba(139, 92, 246, 0.15), transparent 60%); }
+  .guessing-text {
+    font-size: 5.5vw;
+    font-weight: 900;
+    color: var(--violet-bright);
+    text-shadow: 0 0 30px rgba(139, 92, 246, 0.5);
+  }
+  .guessing-sub { font-size: 3vw; font-weight: 800; color: var(--text); margin-top: 2vh; }
+  #guessing-countdown {
+    font-size: 14vw;
+    font-weight: 900;
+    color: #ffd54a;
+    margin-top: 3vh;
+    text-shadow: 0 0 30px rgba(255, 213, 74, 0.5);
+    line-height: 1;
+  }
 </style>
 </head>
 <body>
@@ -248,8 +316,32 @@
     <div id="lobby-sub">Open this link on your phone to join:</div>
     <div id="lobby-url">Loading controller URL...</div>
     <div id="lobby-player-count">0 players joined</div>
+    <div id="lobby-pot">Pot: 0.00 MON</div>
     <div id="lobby-players"></div>
     <button id="lobby-start-button">START ROUND</button>
+  </div>
+
+  <div id="leaderboard-screen" class="screen">
+    <div class="badge">LEADERBOARD</div>
+    <img class="title-logo" src="/assets/logo.png" alt="Onchain Chaos" />
+    <div id="leaderboard-winner-banner"></div>
+    <table id="leaderboard-table">
+      <thead><tr><th>#</th><th>Player</th><th>Guess</th><th>Actual</th><th>Diff</th></tr></thead>
+      <tbody id="leaderboard-body"></tbody>
+    </table>
+  </div>
+
+  <div id="celebration-screen" class="screen">
+    <img class="title-logo" src="/assets/logo.png" alt="Onchain Chaos" />
+    <div class="celebration-text">🎉 CROWD WINS! 🎉</div>
+    <div class="celebration-sub">Minting champion NFT...</div>
+  </div>
+
+  <div id="guessing-screen" class="screen">
+    <img class="title-logo" src="/assets/logo.png" alt="Onchain Chaos" />
+    <div class="guessing-text">🤔 CHECK YOUR PHONES</div>
+    <div class="guessing-sub">Guess how many times YOU tapped!</div>
+    <div id="guessing-countdown">20</div>
   </div>
 
   <div id="game-screen" class="screen">
@@ -311,11 +403,18 @@
     const teamCountsEl = document.getElementById('team-counts');
     const lobbyScreen = document.getElementById('lobby-screen');
     const gameScreen = document.getElementById('game-screen');
+    const leaderboardScreen = document.getElementById('leaderboard-screen');
+    const celebrationScreen = document.getElementById('celebration-screen');
+    const guessingScreen = document.getElementById('guessing-screen');
+    const guessingCountdownEl = document.getElementById('guessing-countdown');
     const lobbyUrlEl = document.getElementById('lobby-url');
     const lobbyPlayerCountEl = document.getElementById('lobby-player-count');
+    const lobbyPotEl = document.getElementById('lobby-pot');
     const lobbyPlayersEl = document.getElementById('lobby-players');
     const lobbyStartButton = document.getElementById('lobby-start-button');
     const logListEl = document.getElementById('log-list');
+    const leaderboardWinnerBanner = document.getElementById('leaderboard-winner-banner');
+    const leaderboardBody = document.getElementById('leaderboard-body');
 
     fetch('/api/join-urls')
       .then((res) => res.json())
@@ -331,6 +430,9 @@
     function showScreen(name) {
       lobbyScreen.classList.toggle('active', name === 'lobby');
       gameScreen.classList.toggle('active', name === 'game');
+      leaderboardScreen.classList.toggle('active', name === 'leaderboard');
+      celebrationScreen.classList.toggle('active', name === 'celebration');
+      guessingScreen.classList.toggle('active', name === 'guessing');
     }
 
     function startRound() { fetch('/api/start', { method: 'POST' }); }
@@ -347,11 +449,33 @@
     function renderLobbyPlayers(players) {
       lobbyPlayerCountEl.textContent = `${players.length} player${players.length === 1 ? '' : 's'} joined`;
       lobbyPlayersEl.innerHTML = players
-        .map((p) => `<div class="player-chip team-${p.team}">${escapeHtml(p.username)}</div>`)
+        .map((p) => `<div class="player-chip team-${p.team}">${escapeHtml(p.username)}${p.paid ? ' 💰' : ''}</div>`)
         .join('');
       lobbyStartButton.disabled = players.length === 0;
     }
-    socket.on('lobby', ({ players }) => renderLobbyPlayers(players));
+    socket.on('lobby', ({ players, potMon }) => {
+      renderLobbyPlayers(players);
+      if (potMon != null) lobbyPotEl.textContent = `Pot: ${potMon} MON`;
+    });
+
+    function renderLeaderboard(s) {
+      const list = s.leaderboard || [];
+      const winner = list.find((p) => p.username === s.winnerUsername);
+      leaderboardWinnerBanner.innerHTML = winner
+        ? `🏆 ${escapeHtml(winner.username)} WINS ${s.potMon} MON 🏆`
+        : 'No winner this round';
+      leaderboardBody.innerHTML = list
+        .map((p, i) => `
+          <tr class="leaderboard-row${p.username === s.winnerUsername ? ' winner' : ''}">
+            <td>${i + 1}</td>
+            <td class="leaderboard-name team-${p.team}">${escapeHtml(p.username)}</td>
+            <td>${p.guess ?? '—'}</td>
+            <td>${p.taps}</td>
+            <td>${Number.isFinite(p.diff) ? p.diff : '—'}</td>
+          </tr>
+        `)
+        .join('');
+    }
 
     const MAX_LOG_ROWS = 8;
     socket.on('tapped', ({ username, team }) => {
@@ -381,8 +505,18 @@
     }
 
     socket.on('state', (s) => {
-      showScreen(s.status === 'waiting' ? 'lobby' : 'game');
       if (s.players) renderLobbyPlayers(s.players);
+      if (s.potMon != null) lobbyPotEl.textContent = `Pot: ${s.potMon} MON`;
+
+      if (s.status === 'waiting') { showScreen('lobby'); return; }
+      if (s.status === 'won') { showScreen('celebration'); return; }
+      if (s.status === 'guessing') {
+        showScreen('guessing');
+        guessingCountdownEl.textContent = Math.max(0, Math.ceil((s.guessDeadline - Date.now()) / 1000));
+        return;
+      }
+      if (s.status === 'leaderboard') { showScreen('leaderboard'); renderLeaderboard(s); return; }
+      showScreen('game');
 
       setBar('left', s.left.power, s.left.target);
       setBar('right', s.right.power, s.right.target);
@@ -401,9 +535,7 @@
         teamCountsEl.textContent = `${s.teamCounts.left} LEFT / ${s.teamCounts.hold} HOLD / ${s.teamCounts.right} RIGHT`;
       }
 
-      if (s.status === 'won') {
-        statusBanner.textContent = '🎉 CROWD WINS — MINTING CHAMPION NFT 🎉';
-      } else if (s.status === 'dropped') {
+      if (s.status === 'dropped') {
         statusBanner.textContent = '💥 COIN DROPPED — resetting...';
       } else if (!s.coin.held) {
         statusBanner.textContent = 'GET TO THE COIN — HOLD TO PICK IT UP';

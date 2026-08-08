@@ -77,6 +77,21 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
+  #wallet-section { margin-top: 22px; }
+  #connect-wallet-button {
+    padding: 14px 20px;
+    font-size: 3.8vw;
+    font-weight: 800;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    border: none;
+    border-radius: 12px;
+    background: #8b5cf6;
+    color: #0a0612;
+  }
+  #connect-wallet-button:disabled { opacity: 0.5; }
+  #wallet-status { margin-top: 10px; font-size: 3.2vw; color: #8e8ea8; min-height: 4vw; }
+
   /* --- game screen --- */
   #game-screen { flex: 1; }
   #player-label {
@@ -132,6 +147,54 @@
   .team-left { background: #2f6fed; }
   .team-right { background: #ed8f2f; }
   .team-hold { background: #2fed8f; color: #06210f; }
+
+  /* --- guess screen --- */
+  #guess-screen { justify-content: center; align-items: stretch; padding: 24px; gap: 10px; text-align: center; }
+  #guess-input {
+    margin: 14px 12px 0;
+    padding: 18px;
+    font-size: 9vw;
+    font-family: inherit;
+    text-align: center;
+    border-radius: 14px;
+    border: 3px solid #26263a;
+    background: #101018;
+    color: #fff;
+    outline: none;
+  }
+  #guess-input:focus { border-color: #8b5cf6; }
+  #guess-submit-button {
+    margin: 14px 12px 0;
+    padding: 20px;
+    font-size: 5.5vw;
+    font-weight: 900;
+    font-family: inherit;
+    letter-spacing: 1px;
+    border: none;
+    border-radius: 14px;
+    background: #8b5cf6;
+    color: #0a0612;
+  }
+  #guess-timer { margin-top: 10px; font-size: 3.8vw; color: #8e8ea8; }
+
+  /* --- result screen --- */
+  #result-screen { justify-content: center; align-items: center; padding: 24px; text-align: center; }
+  .result-winner { font-size: 11vw; font-weight: 900; color: #ffd54a; text-shadow: 0 0 24px rgba(255, 213, 74, 0.5); }
+  .result-amount { font-size: 7vw; font-weight: 900; color: #35d07f; margin-top: 14px; }
+  .result-normal { font-size: 5.5vw; font-weight: 800; color: #c9d6ff; }
+  .result-detail { font-size: 3.8vw; color: #8e8ea8; margin-top: 14px; }
+
+  /* --- celebration screen --- */
+  #celebration-screen { justify-content: center; align-items: center; padding: 24px; text-align: center; background: radial-gradient(circle at 50% 40%, rgba(255, 213, 74, 0.14), transparent 60%); }
+  .celebration-text {
+    font-size: 13vw;
+    font-weight: 900;
+    color: #ffd54a;
+    text-shadow: 0 0 30px rgba(255, 213, 74, 0.6);
+    animation: pulse 1s ease-in-out infinite;
+  }
+  .celebration-sub { font-size: 4.4vw; font-weight: 800; color: #a78bfa; margin-top: 14px; }
+  @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
 </style>
 </head>
 <body>
@@ -149,6 +212,15 @@
     <div class="sub">You're in, <span id="lobby-username"></span>!</div>
     <div class="waiting-msg">Waiting for the host to start...</div>
     <div class="spinner"></div>
+    <div id="wallet-section">
+      <button id="connect-wallet-button">CONNECT WALLET &amp; BUY IN</button>
+      <div id="wallet-status"></div>
+    </div>
+  </div>
+
+  <div id="celebration-screen" class="screen">
+    <div class="celebration-text">🎉 CROWD WINS! 🎉</div>
+    <div class="celebration-sub">Get ready to guess your taps...</div>
   </div>
 
   <div id="game-screen" class="screen">
@@ -157,6 +229,24 @@
     <div id="mini-bar-outer"><div id="mini-bar-fill"></div><div id="mini-target-line"></div></div>
     <div id="mini-state"></div>
     <button id="big-button">...</button>
+  </div>
+
+  <div id="guess-screen" class="screen">
+    <img class="title-logo" src="/assets/logo.png" alt="Onchain Chaos" />
+    <div id="guess-prompt">
+      <div class="sub">🎉 THE CROWD WON! How many times do you think YOU tapped?</div>
+      <input id="guess-input" type="number" inputmode="numeric" min="0" placeholder="Your guess" />
+      <button id="guess-submit-button">SUBMIT GUESS</button>
+      <div id="guess-timer"></div>
+    </div>
+    <div id="guess-submitted" style="display:none;">
+      <div class="waiting-msg">Guess submitted — waiting for the leaderboard...</div>
+      <div class="spinner"></div>
+    </div>
+  </div>
+
+  <div id="result-screen" class="screen">
+    <div id="result-content"></div>
   </div>
 
 </div>
@@ -168,9 +258,17 @@
   const joinScreen = document.getElementById('join-screen');
   const lobbyScreen = document.getElementById('lobby-screen');
   const gameScreen = document.getElementById('game-screen');
+  const celebrationScreen = document.getElementById('celebration-screen');
+  const guessScreen = document.getElementById('guess-screen');
+  const resultScreen = document.getElementById('result-screen');
+
   const usernameInput = document.getElementById('username-input');
   const joinButton = document.getElementById('join-button');
   const lobbyUsernameEl = document.getElementById('lobby-username');
+
+  const walletSection = document.getElementById('wallet-section');
+  const connectWalletButton = document.getElementById('connect-wallet-button');
+  const walletStatusEl = document.getElementById('wallet-status');
 
   const roundState = document.getElementById('round-state');
   const bigButton = document.getElementById('big-button');
@@ -178,13 +276,42 @@
   const miniLine = document.getElementById('mini-target-line');
   const miniState = document.getElementById('mini-state');
 
+  const guessPrompt = document.getElementById('guess-prompt');
+  const guessSubmitted = document.getElementById('guess-submitted');
+  const guessInput = document.getElementById('guess-input');
+  const guessSubmitButton = document.getElementById('guess-submit-button');
+  const guessTimerEl = document.getElementById('guess-timer');
+
+  const resultContent = document.getElementById('result-content');
+
   let joined = false;
   let myTeam = null;
+  let myUsername = '';
+  let hasGuessed = false;
+  let walletAddress = null;
+  let config = null;
   const EMOJI_LABELS = { left: 'LEFT', right: 'RIGHT', hold: 'HOLD' };
 
+  fetch('/api/config')
+    .then((r) => r.json())
+    .then((c) => {
+      config = c;
+      if (!c.potWalletAddress) walletSection.style.display = 'none'; // pot wallet not set up yet on the server
+      else connectWalletButton.textContent = `CONNECT WALLET & BUY IN (${c.buyInMon} MON)`;
+    })
+    .catch(() => { walletSection.style.display = 'none'; });
+
+  function short(addr) { return addr ? addr.slice(0, 6) + '…' + addr.slice(-4) : ''; }
+
+  function screens() {
+    return {
+      join: joinScreen, lobby: lobbyScreen, game: gameScreen,
+      celebration: celebrationScreen, guess: guessScreen, result: resultScreen,
+    };
+  }
   function showScreen(name) {
-    for (const el of [joinScreen, lobbyScreen, gameScreen]) el.classList.remove('active');
-    ({ join: joinScreen, lobby: lobbyScreen, game: gameScreen })[name].classList.add('active');
+    for (const el of Object.values(screens())) el.classList.remove('active');
+    screens()[name].classList.add('active');
   }
 
   function doJoin() {
@@ -197,6 +324,7 @@
   socket.on('joined', ({ team, username }) => {
     joined = true;
     myTeam = team;
+    myUsername = username;
     lobbyUsernameEl.textContent = username;
     bigButton.textContent = EMOJI_LABELS[team];
     bigButton.className = 'team-' + team;
@@ -206,14 +334,143 @@
   // if the connection drops and reconnects, re-join automatically so the player doesn't
   // have to retype their name mid-round
   socket.on('connect', () => {
-    if (joined) socket.emit('join', { username: lobbyUsernameEl.textContent });
+    if (joined) socket.emit('join', { username: myUsername });
+  });
+
+  function updateWalletUI(mySelf) {
+    if (!config || !config.potWalletAddress) return;
+    const paid = mySelf && mySelf.paid;
+    if (paid) {
+      connectWalletButton.disabled = true;
+      connectWalletButton.textContent = 'BOUGHT IN ✅';
+      walletStatusEl.textContent = walletAddress ? short(walletAddress) : '';
+    } else if (walletAddress) {
+      connectWalletButton.disabled = false;
+      connectWalletButton.textContent = `BUY IN (${config.buyInMon} MON)`;
+      walletStatusEl.textContent = `Connected: ${short(walletAddress)}`;
+    } else {
+      connectWalletButton.disabled = false;
+      connectWalletButton.textContent = `CONNECT WALLET & BUY IN (${config.buyInMon} MON)`;
+    }
+  }
+
+  async function connectWallet() {
+    if (!config) return;
+    // Mobile browsers don't have window.ethereum — bounce into MetaMask's own in-app
+    // browser, which does, then the user lands back on this same page to finish connecting.
+    if (typeof window.ethereum === 'undefined') {
+      const dappUrl = window.location.href.replace(/^https?:\/\//, '');
+      window.location.href = `https://metamask.app.link/dapp/${dappUrl}`;
+      return;
+    }
+    connectWalletButton.disabled = true;
+    try {
+      connectWalletButton.textContent = 'CONNECTING...';
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      walletAddress = accounts[0];
+      socket.emit('wallet', { address: walletAddress });
+
+      const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+      if (chainId !== config.chainIdHex) {
+        try {
+          await window.ethereum.request({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: config.chainIdHex }],
+          });
+        } catch (switchErr) {
+          await window.ethereum.request({
+            method: 'wallet_addEthereumChain',
+            params: [{
+              chainId: config.chainIdHex,
+              chainName: 'Monad Testnet',
+              nativeCurrency: { name: 'MON', symbol: 'MON', decimals: 18 },
+              rpcUrls: [config.rpcUrl],
+              blockExplorerUrls: [config.explorerUrl],
+            }],
+          });
+        }
+      }
+
+      connectWalletButton.textContent = 'CONFIRM BUY-IN IN METAMASK...';
+      const txHash = await window.ethereum.request({
+        method: 'eth_sendTransaction',
+        params: [{
+          from: walletAddress,
+          to: config.potWalletAddress,
+          value: '0x' + BigInt(config.buyInWei).toString(16),
+        }],
+      });
+      socket.emit('buyIn', { txHash });
+      walletStatusEl.textContent = `Connected: ${short(walletAddress)}`;
+    } catch (err) {
+      console.error('Wallet connect/buy-in failed', err);
+      connectWalletButton.disabled = false;
+      connectWalletButton.textContent = `CONNECT WALLET & BUY IN (${config.buyInMon} MON)`;
+      walletStatusEl.textContent = 'Failed or cancelled — try again';
+    }
+  }
+  connectWalletButton.addEventListener('click', connectWallet);
+
+  guessSubmitButton.addEventListener('click', () => {
+    const val = Number(guessInput.value);
+    if (!Number.isFinite(val) || val < 0) return;
+    hasGuessed = true;
+    socket.emit('guess', { guess: val });
+    guessPrompt.style.display = 'none';
+    guessSubmitted.style.display = 'block';
   });
 
   socket.on('state', (s) => {
     if (!joined || !myTeam) return;
 
     if (s.status === 'waiting') {
+      hasGuessed = false;
+      guessInput.value = '';
+      const mySelf = (s.players || []).find((p) => p.username === myUsername);
+      updateWalletUI(mySelf);
       showScreen('lobby');
+      return;
+    }
+
+    if (s.status === 'won') {
+      showScreen('celebration');
+      return;
+    }
+
+    if (s.status === 'guessing') {
+      showScreen('guess');
+      if (hasGuessed) {
+        guessPrompt.style.display = 'none';
+        guessSubmitted.style.display = 'block';
+      } else {
+        guessPrompt.style.display = 'block';
+        guessSubmitted.style.display = 'none';
+        const secsLeft = Math.max(0, Math.ceil((s.guessDeadline - Date.now()) / 1000));
+        guessTimerEl.textContent = secsLeft + 's left';
+      }
+      return;
+    }
+
+    if (s.status === 'leaderboard') {
+      showScreen('result');
+      const isWinner = s.winnerUsername && s.winnerUsername === myUsername;
+      if (isWinner) {
+        resultContent.innerHTML = `
+          <div class="result-winner">🏆 WINNER! 🏆</div>
+          <div class="result-amount">You won ${s.potMon} MON</div>
+          <div class="result-detail">Nice guessing, ${myUsername}!</div>
+        `;
+      } else {
+        const list = s.leaderboard || [];
+        const mine = list.find((p) => p.username === myUsername);
+        const rank = list.findIndex((p) => p.username === myUsername) + 1;
+        resultContent.innerHTML = mine
+          ? `
+            <div class="result-normal">You guessed ${mine.guess ?? '—'}, actually tapped ${mine.taps}</div>
+            <div class="result-detail">Rank #${rank || '—'} — ${s.winnerUsername || 'someone'} won this round</div>
+          `
+          : `<div class="result-normal">${s.winnerUsername || 'Someone'} won this round</div>`;
+      }
       return;
     }
 
@@ -229,7 +486,6 @@
     miniState.style.color = cls;
     bigButton.disabled = s.status !== 'playing';
     if (s.status === 'playing') roundState.textContent = 'PLAY NOW';
-    else if (s.status === 'won') roundState.textContent = 'CROWD WINS';
     else if (s.status === 'dropped') roundState.textContent = 'Coin dropped';
   });
 
