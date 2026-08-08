@@ -70,6 +70,13 @@
     min-height: 2.4vw;
     color: var(--violet-bright);
     margin-bottom: 1.5vh;
+    transition: font-size 0.15s, color 0.15s;
+  }
+  #status-banner.urgent {
+    font-size: 3.4vw;
+    color: #ffd54a;
+    text-shadow: 0 0 20px rgba(255, 213, 74, 0.5);
+    animation: pulse 0.6s ease-in-out infinite;
   }
   #operator-row {
     display: flex;
@@ -393,7 +400,6 @@
         <button id="start-button">START ROUND</button>
         <button class="secondary" id="reset-button">RESET</button>
         <div>Players: <span id="team-counts">0 / 0 / 0</span></div>
-        <div>Hold steady: <span id="win-timer">0.0</span>s / 3.0s</div>
       </div>
 
       <div id="track-panel" class="panel">
@@ -437,7 +443,6 @@
     const robotEl = document.getElementById('robot');
     const coinEl = document.getElementById('coin');
     const statusBanner = document.getElementById('status-banner');
-    const winTimerEl = document.getElementById('win-timer');
     const startButton = document.getElementById('start-button');
     const resetButton = document.getElementById('reset-button');
     const teamCountsEl = document.getElementById('team-counts');
@@ -593,17 +598,21 @@
       // see it land and understand what happened, instead of it just disappearing.
       coinEl.classList.toggle('dropped', s.coinDropped);
 
-      winTimerEl.textContent = s.winTimer.toFixed(1);
       if (s.teamCounts) {
         teamCountsEl.textContent = `${s.teamCounts.left} LEFT / ${s.teamCounts.hold} HOLD / ${s.teamCounts.right} RIGHT`;
       }
 
-      if (s.status === 'dropped') {
-        statusBanner.textContent = '💥 COIN DROPPED — resetting...';
-      } else if (!s.coin.held) {
-        statusBanner.textContent = 'GET TO THE COIN — HOLD TO PICK IT UP';
+      // dropping the coin in the wallet zone IS the win move now — dropping it anywhere else
+      // is just a fumble, not a fail: the coin sits there and can be picked back up, no reset.
+      statusBanner.classList.toggle('urgent', !!s.dropPrompt);
+      if (s.dropPrompt) {
+        statusBanner.textContent = '✋ STOP HOLDING — DROP THE COIN HERE!';
+      } else if (s.coin.held) {
+        statusBanner.textContent = 'COIN GRABBED — CARRY IT TO THE WALLET';
+      } else if (s.coinDropped) {
+        statusBanner.textContent = '💥 COIN DROPPED — GO PICK IT BACK UP';
       } else {
-        statusBanner.textContent = 'COIN GRABBED — DELIVER IT TO THE WALLET';
+        statusBanner.textContent = 'GET TO THE COIN — HOLD TO PICK IT UP';
       }
     });
   </script>

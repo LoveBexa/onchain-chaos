@@ -85,8 +85,7 @@ const ROBOT_START_X = 500; // middle of the track — robot must travel LEFT to 
 const COIN_START_X = 150;
 const PICKUP_RADIUS = 45;
 const WALLET_ZONE = { start: 820, end: 950 };
-const BALANCE_TOLERANCE = 15; // |left-right| must be under this to count as "steady"
-const WIN_HOLD_SECONDS = 3;
+const BALANCE_TOLERANCE = 15; // |left-right| must be under this at the moment HOLD lets go
 
 const TARGETS = { left: 70, right: 70, hold: 60 };
 
@@ -130,9 +129,9 @@ function freshState() {
     hold: { power: 0, target: TARGETS.hold },
     robot: { x: ROBOT_START_X, v: 0 },
     coin: { x: COIN_START_X, held: false },
-    coinDropped: false,
-    winTimer: 0,
-    status: 'waiting', // waiting | playing | won | dropped | guessing | leaderboard
+    coinDropped: false, // true while the coin is on the ground (fumbled or not-yet-picked-up)
+    dropPrompt: false, // true while HOLD should let go — robot's parked in the wallet zone
+    status: 'waiting', // waiting | playing | won | guessing | leaderboard
     guessDeadline: null,
     leaderboard: null,
     winnerUsername: null,
@@ -417,37 +416,33 @@ function tick() {
 
     const nearCoin = Math.abs(state.robot.x - state.coin.x) <= PICKUP_RADIUS;
 
-    // HOLD picks up the coin only once the robot is close enough.
+    // HOLD picks up (or re-picks-up, after a fumble) the coin once the robot is close enough.
     if (!state.coin.held && nearCoin && state.hold.power >= state.hold.target - 8) {
       state.coin.held = true;
+      state.coinDropped = false; // back in hand — no longer showing as "on the ground"
     }
 
     if (state.coin.held) {
       state.coin.x = state.robot.x;
     }
 
-    // After pickup, HOLD becomes the grip meter. If it drains fully, the coin drops.
-    if (state.coin.held && state.hold.power <= 0 && !state.coinDropped) {
-      state.coinDropped = true;
-      state.coin.held = false;
-      state.coin.x = state.robot.x;
-      state.status = 'dropped';
-      io.emit('dropped');
-      scheduleReset(2500);
-    }
-
-    // win check: in zone, gripped, and steering balanced (holding steady)
     const inZone = state.robot.x >= WALLET_ZONE.start && state.robot.x <= WALLET_ZONE.end;
     const balanced = Math.abs(state.left.power - state.right.power) <= BALANCE_TOLERANCE;
-    const gripped = state.coin.held && state.hold.power > 0;
 
-    if (inZone && balanced && gripped) {
-      state.winTimer += dt;
-      if (state.winTimer >= WIN_HOLD_SECONDS) {
+    // Tell HOLD to let go once the robot is parked in the wallet zone — releasing the coin
+    // there is the win move itself now, not an accident to avoid.
+    state.dropPrompt = state.coin.held && inZone;
+
+    // Grip fails whenever hold.power drains to 0, in or out of the zone. Letting go IN the zone
+    // while balanced is a win. Anywhere/anytime else it's just a fumble: the coin falls where the
+    // robot currently is and can simply be walked back to and picked up again — nothing resets.
+    if (state.coin.held && state.hold.power <= 0) {
+      state.coin.held = false;
+      state.coin.x = state.robot.x;
+      state.coinDropped = true;
+      if (inZone && balanced) {
         onWin();
       }
-    } else {
-      state.winTimer = 0;
     }
   } else if (state.status === 'guessing') {
     maybeFinishGuessing();

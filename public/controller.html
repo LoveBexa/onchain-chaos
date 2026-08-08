@@ -526,12 +526,19 @@
     let cls = '#5b6b8c', label = 'LOW — TAP MORE';
     if (t.power > t.target + 8) { cls = '#e05252'; label = 'HIGH — EASE OFF'; }
     else if (t.power >= t.target - 8) { cls = '#35d07f'; label = 'GOOD — HOLD IT'; }
+    // HOLD gets a specific override once the robot's in the wallet zone — this is the moment
+    // they need to deliberately stop tapping and let the grip drop, which is the win move now.
+    if (myTeam === 'hold' && s.dropPrompt) { cls = '#ffd54a'; label = '✋ STOP — DROP IT NOW!'; }
     miniFill.style.background = cls;
     miniState.textContent = label;
     miniState.style.color = cls;
     bigButton.disabled = s.status !== 'playing';
-    if (s.status === 'playing') roundState.textContent = 'PLAY NOW';
-    else if (s.status === 'dropped') roundState.textContent = 'Coin dropped';
+    if (s.status === 'playing') {
+      if (s.dropPrompt) roundState.textContent = myTeam === 'hold' ? 'DROP IT NOW!' : 'HOLD IS DROPPING IT — HOLD STEADY';
+      else if (s.coin.held) roundState.textContent = 'CARRY TO WALLET';
+      else if (s.coinDropped) roundState.textContent = 'COIN DROPPED — GO GET IT';
+      else roundState.textContent = 'PLAY NOW';
+    }
   });
 
   function tap(e) {
