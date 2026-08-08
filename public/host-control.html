@@ -86,15 +86,35 @@
   }
   button:active { filter: brightness(1.1); }
   #mode-toggle-button {
-    background: transparent;
-    color: var(--text-dim);
-    border: 1px solid var(--panel-border);
-    padding: 8px 14px;
+    background: var(--violet);
+    color: #0a0612;
+    border: 0;
+    border-radius: 999px;
+    padding: 9px 16px;
     font-size: 12px;
+    font-weight: 800;
     width: auto;
     margin-bottom: 0;
+    box-shadow: 0 3px 0 #5b3aa8;
+    transition: transform 0.05s, box-shadow 0.05s, filter 0.1s;
+  }
+  #mode-toggle-button:hover { filter: brightness(1.08); }
+  #mode-toggle-button:active {
+    transform: translateY(3px);
+    box-shadow: 0 0 0 #5b3aa8;
   }
   #start-button:disabled { opacity: 0.4; cursor: default; }
+  #nav-row {
+    display: flex;
+    justify-content: center;
+    gap: 18px;
+    margin-top: 6px;
+  }
+  #nav-row a {
+    font-size: 12px;
+    color: var(--text-dim);
+    text-decoration: underline;
+  }
 </style>
 </head>
 <body>
@@ -109,6 +129,12 @@
     </div>
 
     <button id="start-button">START ROUND</button>
+
+    <div id="nav-row">
+      <a href="/host.html" target="_blank" rel="noopener">Host screen</a>
+      <a href="/controller.html" target="_blank" rel="noopener">Controller</a>
+      <a href="/simulator.html" target="_blank" rel="noopener">Simulator</a>
+    </div>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>

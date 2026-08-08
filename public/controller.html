@@ -108,6 +108,12 @@
     margin-bottom: 10px;
     color: #a78bfa;
   }
+  #tap-controls, #steer-controls {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+  .hidden { display: none !important; }
   #mini-bar-outer {
     margin: 0 0 10px;
     height: 28px;
@@ -146,9 +152,59 @@
   }
   #big-button:active { filter: brightness(1.3); }
   #big-button:disabled { opacity: 0.45; filter: grayscale(0.4); }
-  .team-left { background: #2f6fed; }
-  .team-right { background: #ed8f2f; }
+  .team-push { background: #8b5cf6; }
   .team-hold { background: #2fed8f; color: #06210f; }
+
+  /* --- STEER's tug-of-war controls (two buttons, not one big button) --- */
+  #steer-bar-outer {
+    margin: 0 0 10px;
+    height: 28px;
+    background: #191925;
+    border-radius: 999px;
+    position: relative;
+    overflow: hidden;
+    border: 2px solid #26263a;
+  }
+  #steer-center-line {
+    position: absolute; left: 50%; top: 0; bottom: 0; width: 3px;
+    background: #26263a;
+    transform: translateX(-50%);
+  }
+  #steer-indicator {
+    position: absolute; top: 2px; bottom: 2px; width: 22px;
+    border-radius: 999px;
+    background: #ed8f2f;
+    left: 50%;
+    transform: translateX(-50%);
+    transition: left 0.05s linear;
+  }
+  #steer-state {
+    text-align: center;
+    font-weight: 800;
+    font-size: 4vw;
+    min-height: 5vw;
+    margin-bottom: 10px;
+    color: #ed8f2f;
+  }
+  #steer-buttons {
+    flex: 1;
+    display: flex;
+    gap: 14px;
+  }
+  .steer-button {
+    flex: 1;
+    border-radius: 24px;
+    border: none;
+    font-size: 8vw;
+    font-weight: 900;
+    color: #fff;
+    background: #ed8f2f;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .steer-button:active { filter: brightness(1.3); }
+  .steer-button:disabled { opacity: 0.45; filter: grayscale(0.4); }
 
   /* --- guess screen --- */
   #guess-screen { justify-content: center; align-items: stretch; padding: 24px; gap: 10px; text-align: center; }
@@ -227,9 +283,21 @@
 
   <div id="game-screen" class="screen">
     <div id="round-state">PLAY NOW</div>
-    <div id="mini-bar-outer"><div id="mini-bar-fill"></div><div id="mini-target-line"></div></div>
-    <div id="mini-state"></div>
-    <button id="big-button">...</button>
+
+    <div id="tap-controls">
+      <div id="mini-bar-outer"><div id="mini-bar-fill"></div><div id="mini-target-line"></div></div>
+      <div id="mini-state"></div>
+      <button id="big-button">...</button>
+    </div>
+
+    <div id="steer-controls" class="hidden">
+      <div id="steer-bar-outer"><div id="steer-center-line"></div><div id="steer-indicator"></div></div>
+      <div id="steer-state"></div>
+      <div id="steer-buttons">
+        <button id="steer-left-button" class="steer-button">⬅</button>
+        <button id="steer-right-button" class="steer-button">➡</button>
+      </div>
+    </div>
   </div>
 
   <div id="guess-screen" class="screen">
@@ -272,10 +340,17 @@
   const walletStatusEl = document.getElementById('wallet-status');
 
   const roundState = document.getElementById('round-state');
+  const tapControls = document.getElementById('tap-controls');
   const bigButton = document.getElementById('big-button');
   const miniFill = document.getElementById('mini-bar-fill');
   const miniLine = document.getElementById('mini-target-line');
   const miniState = document.getElementById('mini-state');
+
+  const steerControls = document.getElementById('steer-controls');
+  const steerIndicator = document.getElementById('steer-indicator');
+  const steerStateEl = document.getElementById('steer-state');
+  const steerLeftButton = document.getElementById('steer-left-button');
+  const steerRightButton = document.getElementById('steer-right-button');
 
   const guessPrompt = document.getElementById('guess-prompt');
   const guessSubmitted = document.getElementById('guess-submitted');
@@ -294,7 +369,7 @@
   // DEMO mode: free buy-in, no wallet needed, for presentation safety — see server.js's fakeMode.
   // Defaults true until /api/config or a live 'state'/'lobby' broadcast says otherwise.
   let fakeMode = true;
-  const EMOJI_LABELS = { left: 'LEFT', right: 'RIGHT', hold: 'HOLD' };
+  const EMOJI_LABELS = { push: 'PUSH', hold: 'HOLD' };
 
   fetch('/api/config')
     .then((r) => r.json())
@@ -332,8 +407,15 @@
     myTeam = team;
     myUsername = username;
     lobbyUsernameEl.textContent = username;
-    bigButton.textContent = EMOJI_LABELS[team];
-    bigButton.className = 'team-' + team;
+    if (team === 'steer') {
+      tapControls.classList.add('hidden');
+      steerControls.classList.remove('hidden');
+    } else {
+      steerControls.classList.add('hidden');
+      tapControls.classList.remove('hidden');
+      bigButton.textContent = EMOJI_LABELS[team];
+      bigButton.className = 'team-' + team;
+    }
     showScreen('lobby');
   });
 
@@ -468,11 +550,11 @@
   socket.on('state', (s) => {
     if (!joined || !myTeam) return;
     if (s.fakeMode != null) fakeMode = !!s.fakeMode;
+    const mySelf = (s.players || []).find((p) => p.username === myUsername);
 
     if (s.status === 'waiting') {
       hasGuessed = false;
       guessInput.value = '';
-      const mySelf = (s.players || []).find((p) => p.username === myUsername);
       updateWalletUI(mySelf);
       showScreen('lobby');
       return;
@@ -510,10 +592,14 @@
         const list = s.leaderboard || [];
         const mine = list.find((p) => p.username === myUsername);
         const rank = list.findIndex((p) => p.username === myUsername) + 1;
+        const notEligible = mine && !mine.paid
+          ? '<div class="result-detail">(didn\'t buy in this round — not eligible to win the pot)</div>'
+          : '';
         resultContent.innerHTML = mine
           ? `
             <div class="result-normal">You guessed ${mine.guess ?? '—'}, actually tapped ${mine.taps}</div>
             <div class="result-detail">Rank #${rank || '—'} — ${s.winnerUsername || 'someone'} won this round</div>
+            ${notEligible}
           `
           : `<div class="result-normal">${s.winnerUsername || 'Someone'} won this round</div>`;
       }
@@ -521,21 +607,44 @@
     }
 
     showScreen('game');
-    const t = s[myTeam];
-    miniFill.style.width = t.power + '%';
-    miniLine.style.left = t.target + '%';
-    let cls = '#5b6b8c', label = 'LOW — TAP MORE';
-    if (t.power > t.target + 8) { cls = '#e05252'; label = 'HIGH — EASE OFF'; }
-    else if (t.power >= t.target - 8) { cls = '#35d07f'; label = 'GOOD — HOLD IT'; }
-    // HOLD gets a specific override once the robot's in the wallet zone — this is the moment
-    // they need to deliberately stop tapping and let the grip drop, which is the win move now.
-    if (myTeam === 'hold' && s.dropPrompt) { cls = '#ffd54a'; label = '✋ STOP — DROP IT NOW!'; }
-    miniFill.style.background = cls;
-    miniState.textContent = label;
-    miniState.style.color = cls;
-    bigButton.disabled = s.status !== 'playing';
+    const notPaid = !mySelf || !mySelf.paid; // must have bought in (real or DEMO) to actually play
+
+    if (myTeam === 'steer') {
+      const power = s.steer.power;
+      steerIndicator.style.left = (50 + (power / 100) * 50) + '%';
+      let label = 'CENTERED', color = '#ed8f2f';
+      if (power > 8) label = 'LEANING RIGHT ➡';
+      else if (power < -8) label = '⬅ LEANING LEFT';
+      // once HOLD is about to drop, STEER's job flips from steering to holding the lean at
+      // center — that's what actually makes the drop count as a win.
+      if (s.dropPrompt) { label = '✋ CENTER IT NOW!'; color = '#ffd54a'; }
+      steerStateEl.textContent = label;
+      steerStateEl.style.color = color;
+      steerLeftButton.disabled = s.status !== 'playing' || notPaid;
+      steerRightButton.disabled = s.status !== 'playing' || notPaid;
+    } else {
+      const t = s[myTeam];
+      miniFill.style.width = t.power + '%';
+      miniLine.style.left = t.target + '%';
+      let cls = '#5b6b8c', label = 'LOW — TAP MORE';
+      if (t.power > t.target + 8) { cls = '#e05252'; label = 'HIGH — EASE OFF'; }
+      else if (t.power >= t.target - 8) { cls = '#35d07f'; label = 'GOOD — HOLD IT'; }
+      // HOLD gets a specific override once the robot's in the wallet zone — this is the moment
+      // they need to deliberately stop tapping and let the grip drop, which is the win move now.
+      if (myTeam === 'hold' && s.dropPrompt) { cls = '#ffd54a'; label = '✋ STOP — DROP IT NOW!'; }
+      miniFill.style.background = cls;
+      miniState.textContent = label;
+      miniState.style.color = cls;
+      bigButton.disabled = s.status !== 'playing' || notPaid;
+    }
+
     if (s.status === 'playing') {
-      if (s.dropPrompt) roundState.textContent = myTeam === 'hold' ? 'DROP IT NOW!' : 'HOLD IS DROPPING IT — HOLD STEADY';
+      if (notPaid) roundState.textContent = 'BUY IN TO PLAY';
+      else if (s.dropPrompt) {
+        if (myTeam === 'hold') roundState.textContent = 'DROP IT NOW!';
+        else if (myTeam === 'steer') roundState.textContent = 'CENTER IT NOW!';
+        else roundState.textContent = 'HOLD IS DROPPING IT — KEEP PUSHING';
+      }
       else if (s.coin.held) roundState.textContent = 'CARRY TO WALLET';
       else if (s.coinDropped) roundState.textContent = 'COIN DROPPED — GO GET IT';
       else roundState.textContent = 'PLAY NOW';
@@ -549,6 +658,18 @@
   }
   bigButton.addEventListener('touchstart', tap, { passive: false });
   bigButton.addEventListener('mousedown', tap);
+
+  function tapSteer(direction) {
+    return (e) => {
+      e.preventDefault();
+      if (navigator.vibrate) navigator.vibrate(10);
+      socket.emit('tap', { direction });
+    };
+  }
+  steerLeftButton.addEventListener('touchstart', tapSteer('left'), { passive: false });
+  steerLeftButton.addEventListener('mousedown', tapSteer('left'));
+  steerRightButton.addEventListener('touchstart', tapSteer('right'), { passive: false });
+  steerRightButton.addEventListener('mousedown', tapSteer('right'));
 </script>
 </body>
 </html>

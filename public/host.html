@@ -15,8 +15,8 @@
     --ok: #35d07f;
     --warn: #e05252;
     --under: #5b6b8c;
-    --team-left: #2f6fed;
-    --team-right: #ed8f2f;
+    --team-push: #8b5cf6;
+    --team-steer: #ed8f2f;
     --team-hold: #2fed8f;
   }
   * { box-sizing: border-box; }
@@ -147,9 +147,9 @@
     font-weight: 800;
     letter-spacing: 1px;
   }
-  .bar-label.team-left { color: var(--team-left); }
+  .bar-label.team-push { color: var(--team-push); }
   .bar-label.team-hold { color: var(--team-hold); }
-  .bar-label.team-right { color: var(--team-right); }
+  .bar-label.team-steer { color: var(--team-steer); }
   .bar-outer {
     position: relative;
     flex: 1;
@@ -176,6 +176,26 @@
     width: 3px;
     background: var(--violet-bright);
   }
+  /* STEER's bar is a tug-of-war lean, not a fill-to-target bar: a fixed center tick plus a
+     moving indicator that slides left/right of center depending which side is winning. */
+  .steer-outer { background: #191925; }
+  .bar-center-line {
+    position: absolute;
+    left: 50%; top: 0; bottom: 0;
+    width: 2px;
+    background: var(--panel-border);
+    transform: translateX(-50%);
+  }
+  .bar-indicator {
+    position: absolute;
+    top: 2px; bottom: 2px;
+    width: 1.4vw;
+    border-radius: 999px;
+    background: var(--team-steer);
+    left: 50%;
+    transform: translateX(-50%);
+    transition: left 0.05s linear;
+  }
   .bar-state {
     width: 9vw;
     text-align: right;
@@ -195,9 +215,9 @@
   .log-row { display: flex; gap: 14px; color: var(--text-dim); }
   .log-time { opacity: 0.6; }
   .log-name { font-weight: 800; }
-  .log-name.team-left { color: var(--team-left); }
+  .log-name.team-push { color: var(--team-push); }
   .log-name.team-hold { color: var(--team-hold); }
-  .log-name.team-right { color: var(--team-right); }
+  .log-name.team-steer { color: var(--team-steer); }
 
   .screen { display: none; }
   .screen.active { display: block; }
@@ -241,28 +261,36 @@
     min-height: 4vw;
   }
   .player-chip {
-    padding: 8px 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 3.2vh;
+    padding: 0 16px;
     border-radius: 999px;
-    font-size: 1vw;
+    font-size: 0.95vw;
+    line-height: 1;
     font-weight: 800;
     color: #0a0612;
+    white-space: nowrap;
   }
-  .player-chip.team-left { background: var(--team-left); color: #fff; }
-  .player-chip.team-right { background: var(--team-right); color: #fff; }
+  .player-chip.team-push { background: var(--team-push); color: #fff; }
+  .player-chip.team-steer { background: var(--team-steer); color: #fff; }
   .player-chip.team-hold { background: var(--team-hold); }
   #lobby-pot { font-size: 1.1vw; color: var(--ok); font-weight: 800; margin-bottom: 1.5vh; }
 
   #mode-row {
+    position: fixed;
+    top: 18px;
+    right: 18px;
     display: flex;
     align-items: center;
-    gap: 14px;
-    margin-bottom: 2vh;
-    padding: 10px 18px;
+    padding: 8px 16px;
     border-radius: 999px;
     background: var(--panel);
     border: 1px solid var(--panel-border);
   }
-  #mode-label { font-size: 1vw; font-weight: 800; letter-spacing: 0.5px; }
+  #mode-label { font-size: 0.8vw; font-weight: 800; letter-spacing: 0.5px; white-space: nowrap; }
   #mode-label.demo { color: var(--violet-bright); }
   #mode-label.real { color: var(--ok); }
 
@@ -292,9 +320,10 @@
   .leaderboard-row.winner { background: rgba(255, 213, 74, 0.08); }
   .leaderboard-row.winner td:first-child { color: #ffd54a; font-weight: 900; }
   .leaderboard-name { font-weight: 800; }
-  .leaderboard-name.team-left { color: var(--team-left); }
+  .not-eligible { font-weight: 500; font-size: 0.8vw; color: var(--text-dim); }
+  .leaderboard-name.team-push { color: var(--team-push); }
   .leaderboard-name.team-hold { color: var(--team-hold); }
-  .leaderboard-name.team-right { color: var(--team-right); }
+  .leaderboard-name.team-steer { color: var(--team-steer); }
 
   #celebration-screen.active, #guessing-screen.active { display: flex; }
   #celebration-screen, #guessing-screen {
@@ -394,9 +423,9 @@
       <div id="bars-panel" class="panel">
         <div class="panel-title">Progress</div>
         <div class="bar-row">
-          <div class="bar-label team-left">LEFT</div>
-          <div class="bar-outer"><div class="bar-fill" id="bar-left"></div><div class="bar-target-line" id="line-left"></div></div>
-          <div class="bar-state" id="state-left"></div>
+          <div class="bar-label team-push">PUSH</div>
+          <div class="bar-outer"><div class="bar-fill" id="bar-push"></div><div class="bar-target-line" id="line-push"></div></div>
+          <div class="bar-state" id="state-push"></div>
         </div>
         <div class="bar-row">
           <div class="bar-label team-hold">HOLD</div>
@@ -404,9 +433,9 @@
           <div class="bar-state" id="state-hold"></div>
         </div>
         <div class="bar-row">
-          <div class="bar-label team-right">RIGHT</div>
-          <div class="bar-outer"><div class="bar-fill" id="bar-right"></div><div class="bar-target-line" id="line-right"></div></div>
-          <div class="bar-state" id="state-right"></div>
+          <div class="bar-label team-steer">STEER</div>
+          <div class="bar-outer steer-outer"><div class="bar-center-line"></div><div class="bar-indicator" id="bar-steer-indicator"></div></div>
+          <div class="bar-state" id="state-steer"></div>
         </div>
       </div>
 
@@ -500,7 +529,7 @@
         .map((p, i) => `
           <tr class="leaderboard-row${p.username === s.winnerUsername ? ' winner' : ''}">
             <td>${i + 1}</td>
-            <td class="leaderboard-name team-${p.team}">${escapeHtml(p.username)}</td>
+            <td class="leaderboard-name team-${p.team}">${escapeHtml(p.username)}${p.paid ? '' : ' <span class="not-eligible">(no buy-in)</span>'}</td>
             <td>${p.guess ?? '—'}</td>
             <td>${p.taps}</td>
             <td>${Number.isFinite(p.diff) ? p.diff : '—'}</td>
@@ -510,11 +539,12 @@
     }
 
     const MAX_LOG_ROWS = 8;
-    socket.on('tapped', ({ username, team }) => {
+    socket.on('tapped', ({ username, team, direction }) => {
       const row = document.createElement('div');
       row.className = 'log-row';
       const time = new Date().toLocaleTimeString('en-GB', { hour12: false });
-      row.innerHTML = `<span class="log-time">${time}</span><span class="log-name team-${team}">${escapeHtml(username)}</span><span>tapped ${team.toUpperCase()}</span>`;
+      const what = team === 'steer' ? `STEER ${direction === 'left' ? '⬅' : '➡'}` : team.toUpperCase();
+      row.innerHTML = `<span class="log-time">${time}</span><span class="log-name team-${team}">${escapeHtml(username)}</span><span>tapped ${what}</span>`;
       logListEl.appendChild(row);
       while (logListEl.children.length > MAX_LOG_ROWS) {
         logListEl.removeChild(logListEl.firstChild);
@@ -536,6 +566,17 @@
       stateEl.style.color = cls === 'ontarget' ? 'var(--ok)' : (cls === 'over' ? 'var(--warn)' : 'var(--text-dim)');
     }
 
+    function setSteerBar(power) {
+      const indicator = document.getElementById('bar-steer-indicator');
+      const stateEl = document.getElementById('state-steer');
+      indicator.style.left = (50 + (power / 100) * 50) + '%';
+      let label = 'CENTERED', color = 'var(--text-dim)';
+      if (power > 8) { label = 'LEANING RIGHT ➡'; color = 'var(--team-steer)'; }
+      else if (power < -8) { label = '⬅ LEANING LEFT'; color = 'var(--team-steer)'; }
+      stateEl.textContent = label;
+      stateEl.style.color = color;
+    }
+
     socket.on('state', (s) => {
       if (s.players) renderLobbyPlayers(s.players);
       if (s.potMon != null) lobbyPotEl.textContent = `Pot: ${s.potMon} MON`;
@@ -551,9 +592,9 @@
       if (s.status === 'leaderboard') { showScreen('leaderboard'); renderLeaderboard(s); return; }
       showScreen('game');
 
-      setBar('left', s.left.power, s.left.target);
-      setBar('right', s.right.power, s.right.target);
+      setBar('push', s.push.power, s.push.target);
       setBar('hold', s.hold.power, s.hold.target);
+      setSteerBar(s.steer.power);
 
       const pct = (s.robot.x / s.trackWidth) * 100;
       const coinPct = (s.coin.x / s.trackWidth) * 100;
@@ -566,7 +607,7 @@
       coinEl.classList.toggle('dropped', s.coinDropped);
 
       if (s.teamCounts) {
-        teamCountsEl.textContent = `${s.teamCounts.left} LEFT / ${s.teamCounts.hold} HOLD / ${s.teamCounts.right} RIGHT`;
+        teamCountsEl.textContent = `${s.teamCounts.push} PUSH / ${s.teamCounts.hold} HOLD / ${s.teamCounts.steer} STEER`;
       }
 
       // dropping the coin in the wallet zone IS the win move now — dropping it anywhere else

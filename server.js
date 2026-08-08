@@ -80,14 +80,16 @@ const FRICTION = 0.86; // per-tick velocity damping (glide + slow down)
 const MAX_SPEED = 14; // prevents the crowd from launching past the targets
 const TRACK_WIDTH = 1000; // arbitrary units, robot x ranges 0..TRACK_WIDTH
 const ROBOT_START_X = 500; // middle of the track — robot must travel LEFT to the coin, then RIGHT
-                            // to the wallet, so both LEFT and RIGHT teams have a real job. A robot
-                            // that starts left of the coin never needs LEFT team's push at all.
+                            // to the wallet, so STEER genuinely has to lean both ways over a round,
+                            // not just hold one direction the whole time.
 const COIN_START_X = 150;
 const PICKUP_RADIUS = 45;
 const WALLET_ZONE = { start: 820, end: 950 };
-const BALANCE_TOLERANCE = 15; // |left-right| must be under this at the moment HOLD lets go
+const BALANCE_TOLERANCE = 15; // |steer.power| must be under this (i.e. roughly centered) at the
+                               // moment HOLD lets go, for a drop-in-zone to count as a win
 
-const TARGETS = { left: 70, right: 70, hold: 60 };
+const TARGETS = { push: 70, hold: 60 }; // STEER has no target — it's a tug-of-war lean, not a
+                                         // hit-the-line bar
 
 const WIN_CELEBRATION_MS = 2500; // how long "CROWD WINS" shows before the guess prompt appears
 const GUESS_WINDOW_MS = 20000; // how long players have to submit a tap-guess
@@ -124,9 +126,9 @@ if (process.env.POT_WALLET_PRIVATE_KEY) {
 
 function freshState() {
   return {
-    left: { power: 0, target: TARGETS.left },
-    right: { power: 0, target: TARGETS.right },
+    push: { power: 0, target: TARGETS.push },
     hold: { power: 0, target: TARGETS.hold },
+    steer: { power: 0 }, // -100 (full left) .. +100 (full right), 0 = centered
     robot: { x: ROBOT_START_X, v: 0 },
     coin: { x: COIN_START_X, held: false },
     coinDropped: false, // true while the coin is on the ground (fumbled or not-yet-picked-up)
@@ -141,7 +143,7 @@ function freshState() {
 
 let state = freshState();
 let potWei = 0n;
-const teamCounts = { left: 0, right: 0, hold: 0 };
+const teamCounts = { push: 0, hold: 0, steer: 0 };
 const socketTeam = new Map();
 const players = new Map(); // socket.id -> { username, team, taps, address, paid, buyInTx, guess }
 // Round-scoped record of wallet addresses that already paid, keyed separately from socket.id —
@@ -154,9 +156,9 @@ let lastTapBroadcast = 0;
 
 function assignTeam() {
   // balance new joiners across the three teams
-  let team = 'right';
+  let team = 'steer';
   if (teamCounts.hold < teamCounts[team]) team = 'hold';
-  if (teamCounts.left < teamCounts[team]) team = 'left';
+  if (teamCounts.push < teamCounts[team]) team = 'push';
   teamCounts[team]++;
   return team;
 }
@@ -235,10 +237,14 @@ function finishGuessing() {
       diff: p.guess == null ? Infinity : Math.abs(p.guess - p.taps),
       address: p.address || null,
       isFake: p.buyInTx === 'DEMO',
+      paid: p.paid,
     }))
     .sort((a, b) => a.diff - b.diff);
 
-  const winner = ranked.length && Number.isFinite(ranked[0].diff) ? ranked[0] : null;
+  // Only players who actually bought in are eligible to win the pot — someone who never paid
+  // can still show up on the board (closest guess and all), but the crown (and the payout) goes
+  // to the best-ranked player who DID pay, even if their guess wasn't the single closest overall.
+  const winner = ranked.find((p) => p.paid && Number.isFinite(p.diff)) || null;
 
   state.status = 'leaderboard';
   state.leaderboard = ranked;
@@ -356,24 +362,34 @@ io.on('connection', (socket) => {
 
   socket.on('tap', (payload = {}) => {
     if (state.status !== 'playing') return;
+    const p = players.get(socket.id);
+    if (!p || !p.paid) return; // must have bought in (real or DEMO) to affect the game at all
     const requestedTeam = payload.team;
-    const t = ['left', 'right', 'hold'].includes(requestedTeam)
+    const t = ['push', 'hold', 'steer'].includes(requestedTeam)
       ? requestedTeam
       : socketTeam.get(socket.id);
     if (!t) return;
     const playersOnTeam = Math.max(1, teamCounts[t]);
     const scaledIncrement = TAP_INCREMENT / playersOnTeam;
-    state[t].power = Math.min(100, state[t].power + scaledIncrement);
-    const p = players.get(socket.id);
-    if (p) {
-      p.taps++;
-      // throttled: this feeds a cosmetic activity log on the host screen, not gameplay,
-      // so under a room full of simultaneous tappers we sample it instead of broadcasting every tap.
-      const now = Date.now();
-      if (now - lastTapBroadcast > 120) {
-        lastTapBroadcast = now;
-        io.emit('tapped', { username: p.username, team: t });
-      }
+
+    let direction = null;
+    if (t === 'steer') {
+      // STEER is a tug-of-war, not a fill bar — LEFT taps pull it negative, RIGHT taps positive.
+      direction = payload.direction === 'left' ? 'left' : payload.direction === 'right' ? 'right' : null;
+      if (!direction) return;
+      const delta = direction === 'left' ? -scaledIncrement : scaledIncrement;
+      state.steer.power = Math.max(-100, Math.min(100, state.steer.power + delta));
+    } else {
+      state[t].power = Math.min(100, state[t].power + scaledIncrement);
+    }
+
+    p.taps++;
+    // throttled: this feeds a cosmetic activity log on the host screen, not gameplay,
+    // so under a room full of simultaneous tappers we sample it instead of broadcasting every tap.
+    const now = Date.now();
+    if (now - lastTapBroadcast > 120) {
+      lastTapBroadcast = now;
+      io.emit('tapped', { username: p.username, team: t, direction });
     }
   });
 
@@ -403,13 +419,16 @@ function tick() {
   const dt = TICK_MS / 1000;
 
   if (state.status === 'playing') {
-    // decay all three bars
-    for (const key of ['left', 'right', 'hold']) {
-      state[key].power = Math.max(0, state[key].power - DECAY_PER_SEC * dt);
-    }
+    // PUSH and HOLD decay toward 0 like any tap-to-target bar. STEER decays toward 0 (center)
+    // from whichever side it's currently leaning — it's a tug-of-war, not a fill bar.
+    state.push.power = Math.max(0, state.push.power - DECAY_PER_SEC * dt);
+    state.hold.power = Math.max(0, state.hold.power - DECAY_PER_SEC * dt);
+    if (state.steer.power > 0) state.steer.power = Math.max(0, state.steer.power - DECAY_PER_SEC * dt);
+    else if (state.steer.power < 0) state.steer.power = Math.min(0, state.steer.power + DECAY_PER_SEC * dt);
 
-    // steering: right team pushes robot right, left team pushes left
-    const steeringForce = (state.right.power - state.left.power) * FORCE_CONST;
+    // PUSH supplies the engine power; STEER's tug-of-war lean (-100..100) decides which way it
+    // goes. No push means no movement even at full lean — both teams have to show up together.
+    const steeringForce = (state.steer.power / 100) * state.push.power * FORCE_CONST;
     state.robot.v = (state.robot.v + steeringForce) * FRICTION;
     state.robot.v = Math.max(-MAX_SPEED, Math.min(MAX_SPEED, state.robot.v));
     state.robot.x = Math.max(0, Math.min(TRACK_WIDTH, state.robot.x + state.robot.v));
@@ -427,20 +446,21 @@ function tick() {
     }
 
     const inZone = state.robot.x >= WALLET_ZONE.start && state.robot.x <= WALLET_ZONE.end;
-    const balanced = Math.abs(state.left.power - state.right.power) <= BALANCE_TOLERANCE;
+    const steerCentered = Math.abs(state.steer.power) <= BALANCE_TOLERANCE;
 
     // Tell HOLD to let go once the robot is parked in the wallet zone — releasing the coin
     // there is the win move itself now, not an accident to avoid.
     state.dropPrompt = state.coin.held && inZone;
 
     // Grip fails whenever hold.power drains to 0, in or out of the zone. Letting go IN the zone
-    // while balanced is a win. Anywhere/anytime else it's just a fumble: the coin falls where the
-    // robot currently is and can simply be walked back to and picked up again — nothing resets.
+    // while STEER is roughly centered (not actively yanking the robot off-target) is a win.
+    // Anywhere/anytime else it's just a fumble: the coin falls where the robot currently is and
+    // can simply be walked back to and picked up again — nothing resets.
     if (state.coin.held && state.hold.power <= 0) {
       state.coin.held = false;
       state.coin.x = state.robot.x;
       state.coinDropped = true;
-      if (inZone && balanced) {
+      if (inZone && steerCentered) {
         onWin();
       }
     }

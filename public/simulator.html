@@ -5,96 +5,149 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Onchain Chaos — Crowd Simulator</title>
 <style>
+  :root {
+    --violet: #8b5cf6;
+    --violet-bright: #a78bfa;
+    --bg: #08080c;
+    --panel: #101018;
+    --panel-border: #26263a;
+    --text: #f2f2f8;
+    --text-dim: #8e8ea8;
+    --ok: #35d07f;
+    --warn: #e05252;
+    --team-push: #8b5cf6;
+    --team-hold: #2fed8f;
+    --team-steer: #ed8f2f;
+  }
   * { box-sizing: border-box; }
   html, body {
     margin: 0;
     min-height: 100%;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    background: #0b0f1a;
-    color: #fff;
+    font-family: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+    background: var(--bg);
+    color: var(--text);
   }
-  body { padding: 24px; }
-  h1 { margin: 0 0 16px; color: #ffd54a; }
+  body { padding: 24px; display: flex; justify-content: center; }
+  #page { width: 100%; max-width: 760px; }
+  h1 {
+    margin: 0 0 6px;
+    font-size: 20px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+  .muted { color: var(--text-dim); font-size: 13px; line-height: 1.5; }
   .panel {
-    max-width: 760px;
-    display: grid;
-    gap: 16px;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 20px;
+    padding: 20px 22px;
+    margin-top: 16px;
+  }
+  .panel-title {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    margin-bottom: 12px;
   }
   .controls {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px;
+    gap: 12px;
     align-items: center;
   }
+  .controls + .controls { margin-top: 14px; }
+  label { font-size: 13px; color: var(--text-dim); display: flex; align-items: center; gap: 8px; }
+  input[type="number"] {
+    width: 70px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--panel-border);
+    background: #0c0c14;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 14px;
+  }
+  input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--violet); }
   button {
     border: 0;
-    border-radius: 8px;
-    padding: 12px 16px;
-    font-size: 16px;
-    font-weight: 900;
+    border-radius: 10px;
+    padding: 11px 18px;
+    font-size: 13px;
+    font-weight: 800;
+    font-family: inherit;
+    letter-spacing: 0.5px;
     cursor: pointer;
   }
-  input {
-    width: 90px;
-    padding: 10px;
-    border-radius: 8px;
-    border: 2px solid #2a3a5c;
-    background: #111a2e;
-    color: #fff;
-    font-size: 16px;
-  }
-  .primary { background: #ffd54a; color: #09111f; }
-  .secondary { background: #c9d6ff; color: #09111f; }
-  .danger { background: #e05252; color: #fff; }
+  button:active { filter: brightness(1.1); }
+  .primary { background: var(--violet); color: #0a0612; }
+  .secondary { background: transparent; color: var(--text-dim); border: 1px solid var(--panel-border); }
+  .danger { background: var(--warn); color: #fff; }
   .team-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 12px;
   }
   .team {
-    border: 2px solid #2a3a5c;
-    border-radius: 8px;
+    border: 1px solid var(--panel-border);
+    border-radius: 14px;
     padding: 16px;
-    background: #111a2e;
+    background: #0c0c14;
+    text-align: center;
   }
   .team strong {
     display: block;
     font-size: 28px;
-    margin-bottom: 8px;
+    margin-bottom: 4px;
   }
-  .muted { color: #c9d6ff; }
+  .team span { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); }
+  .team.push strong { color: var(--team-push); }
+  .team.hold strong { color: var(--team-hold); }
+  .team.steer strong { color: var(--team-steer); }
+  .steer-toggle { color: var(--team-steer); }
 </style>
 </head>
 <body>
-  <div class="panel">
+  <div id="page">
     <h1>Crowd Simulator</h1>
     <div class="muted">Use this on the laptop to fake a room of phones. Start the round on the host screen first.</div>
 
-    <div class="controls">
-      <label>Fake players <input id="player-count" type="number" min="1" max="60" value="9"></label>
-      <button class="primary" id="spawn">SPAWN</button>
-      <button class="danger" id="clear">CLEAR</button>
+    <div class="panel">
+      <div class="panel-title">Spawn</div>
+      <div class="controls">
+        <label>Fake players <input id="player-count" type="number" min="1" max="60" value="9"></label>
+        <button class="primary" id="spawn">SPAWN</button>
+        <button class="danger" id="clear">CLEAR</button>
+      </div>
     </div>
 
-    <div class="controls">
-      <label>Tap rate / player <input id="tap-rate" type="number" min="1" max="12" value="3"></label>
-      <button class="primary" id="start">START AUTO-TAP</button>
-      <button class="secondary" id="stop">STOP</button>
+    <div class="panel">
+      <div class="panel-title">Auto-tap</div>
+      <div class="controls">
+        <label>Tap rate / player <input id="tap-rate" type="number" min="1" max="12" value="3"></label>
+        <button class="primary" id="start">START AUTO-TAP</button>
+        <button class="secondary" id="stop">STOP</button>
+      </div>
+      <div class="controls muted" style="margin-top: 14px;">
+        Toggle mid-round to fake a crowd leaning one way — e.g. uncheck "Steer LEFT" once you reach the coin so RIGHT pulls it home. STEER needs PUSH also ticked to actually move (push supplies the engine power, steer only decides direction).
+      </div>
+      <div class="controls">
+        <label><input type="checkbox" id="tap-push" checked> Tap PUSH</label>
+        <label><input type="checkbox" id="tap-hold" checked> Tap HOLD</label>
+        <label class="steer-toggle"><input type="checkbox" id="steer-left" checked> Steer LEFT</label>
+        <label class="steer-toggle"><input type="checkbox" id="steer-right" checked> Steer RIGHT</label>
+      </div>
     </div>
 
-    <div class="controls muted">
-      Toggle mid-round to fake a crowd leaning one way, e.g. uncheck LEFT once you reach the coin so RIGHT pulls it home:
-    </div>
-    <div class="controls">
-      <label><input type="checkbox" id="tap-left" checked> Tap LEFT</label>
-      <label><input type="checkbox" id="tap-hold" checked> Tap HOLD</label>
-      <label><input type="checkbox" id="tap-right" checked> Tap RIGHT</label>
-    </div>
-
-    <div class="team-grid">
-      <div class="team"><strong id="count-left">0</strong><span>LEFT players</span></div>
-      <div class="team"><strong id="count-hold">0</strong><span>HOLD players</span></div>
-      <div class="team"><strong id="count-right">0</strong><span>RIGHT players</span></div>
+    <div class="panel">
+      <div class="panel-title">Teams</div>
+      <div class="team-grid">
+        <div class="team push"><strong id="count-push">0</strong><span>PUSH players</span></div>
+        <div class="team hold"><strong id="count-hold">0</strong><span>HOLD players</span></div>
+        <div class="team steer"><strong id="count-steer">0</strong><span>STEER players</span></div>
+      </div>
     </div>
   </div>
 
@@ -103,19 +156,19 @@
     const playerCountInput = document.getElementById('player-count');
     const tapRateInput = document.getElementById('tap-rate');
     const counts = {
-      left: document.getElementById('count-left'),
+      push: document.getElementById('count-push'),
       hold: document.getElementById('count-hold'),
-      right: document.getElementById('count-right'),
+      steer: document.getElementById('count-steer'),
     };
     const fakePlayers = [];
     let autoTapTimer = null;
 
     function updateCounts() {
-      const totals = { left: 0, hold: 0, right: 0 };
+      const totals = { push: 0, hold: 0, steer: 0 };
       for (const player of fakePlayers) {
         if (player.team) totals[player.team]++;
       }
-      for (const team of ['left', 'hold', 'right']) counts[team].textContent = totals[team];
+      for (const team of ['push', 'hold', 'steer']) counts[team].textContent = totals[team];
     }
 
     function clearPlayers() {
@@ -145,9 +198,12 @@
     }
 
     const teamToggles = {
-      left: document.getElementById('tap-left'),
+      push: document.getElementById('tap-push'),
       hold: document.getElementById('tap-hold'),
-      right: document.getElementById('tap-right'),
+    };
+    const steerToggles = {
+      left: document.getElementById('steer-left'),
+      right: document.getElementById('steer-right'),
     };
 
     function startAutoTap() {
@@ -155,7 +211,19 @@
       const tapsPerSecond = Math.max(1, Math.min(12, Number(tapRateInput.value) || 1));
       autoTapTimer = setInterval(() => {
         for (const player of fakePlayers) {
-          if (player.team && teamToggles[player.team].checked) player.socket.emit('tap');
+          if (!player.team) continue;
+          if (player.team === 'steer') {
+            // STEER taps need a direction — split bots between whichever side(s) are checked,
+            // same tug-of-war choice a real STEER player would be making each tap.
+            const dirs = [];
+            if (steerToggles.left.checked) dirs.push('left');
+            if (steerToggles.right.checked) dirs.push('right');
+            if (dirs.length === 0) continue;
+            const direction = dirs[Math.floor(Math.random() * dirs.length)];
+            player.socket.emit('tap', { direction });
+          } else if (teamToggles[player.team] && teamToggles[player.team].checked) {
+            player.socket.emit('tap');
+          }
         }
       }, 1000 / tapsPerSecond);
     }
