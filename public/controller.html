@@ -108,11 +108,42 @@
     margin-bottom: 10px;
     color: #a78bfa;
   }
+  .team-count {
+    text-align: center;
+    font-weight: 700;
+    font-size: 3.6vw;
+    color: #9aa3b8;
+    margin-bottom: 8px;
+  }
   #tap-controls, #steer-controls {
     flex: 1;
     display: flex;
     flex-direction: column;
   }
+  #not-paid-screen {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 10px;
+    padding: 24px;
+  }
+  #steer-split-warning {
+    text-align: center;
+    font-weight: 800;
+    font-size: 3.6vw;
+    color: #ffd54a;
+    background: rgba(255, 213, 74, 0.12);
+    border: 2px solid #ffd54a;
+    border-radius: 12px;
+    padding: 6px 10px;
+    margin-bottom: 8px;
+  }
+  #not-paid-icon { font-size: 15vw; opacity: 0.8; }
+  #not-paid-title { font-size: 6vw; font-weight: 900; color: #e05252; }
+  #not-paid-sub { font-size: 4vw; color: #9aa3b8; }
   .hidden { display: none !important; }
   #mini-bar-outer {
     margin: 0 0 10px;
@@ -268,6 +299,7 @@
   <div id="lobby-screen" class="screen">
     <img class="title-logo" src="/assets/logo.png" alt="Onchain Chaos" />
     <div class="sub">You're in, <span id="lobby-username"></span>!</div>
+    <div id="lobby-team-count" class="team-count"></div>
     <div class="waiting-msg">Waiting for the host to start...</div>
     <div class="spinner"></div>
     <div id="wallet-section">
@@ -282,6 +314,7 @@
   </div>
 
   <div id="game-screen" class="screen">
+    <div id="game-team-count" class="team-count"></div>
     <div id="round-state">PLAY NOW</div>
 
     <div id="tap-controls">
@@ -291,12 +324,19 @@
     </div>
 
     <div id="steer-controls" class="hidden">
+      <div id="steer-split-warning" class="hidden">⚠️ YOUR TEAM IS SPLIT — AGREE ON A DIRECTION!</div>
       <div id="steer-bar-outer"><div id="steer-center-line"></div><div id="steer-indicator"></div></div>
       <div id="steer-state"></div>
       <div id="steer-buttons">
         <button id="steer-left-button" class="steer-button">⬅</button>
         <button id="steer-right-button" class="steer-button">➡</button>
       </div>
+    </div>
+
+    <div id="not-paid-screen" class="hidden">
+      <div id="not-paid-icon">🚫</div>
+      <div id="not-paid-title">YOU DIDN'T BUY IN</div>
+      <div id="not-paid-sub">You're sitting this round out — watch the action on the big screen!</div>
     </div>
   </div>
 
@@ -334,12 +374,15 @@
   const usernameInput = document.getElementById('username-input');
   const joinButton = document.getElementById('join-button');
   const lobbyUsernameEl = document.getElementById('lobby-username');
+  const lobbyTeamCountEl = document.getElementById('lobby-team-count');
+  const gameTeamCountEl = document.getElementById('game-team-count');
 
   const walletSection = document.getElementById('wallet-section');
   const connectWalletButton = document.getElementById('connect-wallet-button');
   const walletStatusEl = document.getElementById('wallet-status');
 
   const roundState = document.getElementById('round-state');
+  const notPaidScreen = document.getElementById('not-paid-screen');
   const tapControls = document.getElementById('tap-controls');
   const bigButton = document.getElementById('big-button');
   const miniFill = document.getElementById('mini-bar-fill');
@@ -351,6 +394,7 @@
   const steerStateEl = document.getElementById('steer-state');
   const steerLeftButton = document.getElementById('steer-left-button');
   const steerRightButton = document.getElementById('steer-right-button');
+  const steerSplitWarning = document.getElementById('steer-split-warning');
 
   const guessPrompt = document.getElementById('guess-prompt');
   const guessSubmitted = document.getElementById('guess-submitted');
@@ -361,6 +405,7 @@
   const resultContent = document.getElementById('result-content');
 
   let joined = false;
+  let myId = null;
   let myTeam = null;
   let myUsername = '';
   let hasGuessed = false;
@@ -402,8 +447,9 @@
   joinButton.addEventListener('click', doJoin);
   usernameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doJoin(); });
 
-  socket.on('joined', ({ team, username }) => {
+  socket.on('joined', ({ id, team, username }) => {
     joined = true;
+    myId = id;
     myTeam = team;
     myUsername = username;
     lobbyUsernameEl.textContent = username;
@@ -550,7 +596,13 @@
   socket.on('state', (s) => {
     if (!joined || !myTeam) return;
     if (s.fakeMode != null) fakeMode = !!s.fakeMode;
-    const mySelf = (s.players || []).find((p) => p.username === myUsername);
+    const mySelf = (s.players || []).find((p) => p.id === myId);
+
+    const teamPaid = (s.paidTeamCounts && s.paidTeamCounts[myTeam]) || 0;
+    const teamTotal = (s.teamCounts && s.teamCounts[myTeam]) || 0;
+    const teamCountText = `${myTeam.toUpperCase()} TEAM: ${teamPaid}/${teamTotal} BOUGHT IN`;
+    lobbyTeamCountEl.textContent = teamCountText;
+    gameTeamCountEl.textContent = teamCountText;
 
     if (s.status === 'waiting') {
       hasGuessed = false;
@@ -609,6 +661,21 @@
     showScreen('game');
     const notPaid = !mySelf || !mySelf.paid; // must have bought in (real or DEMO) to actually play
 
+    if (notPaid) {
+      tapControls.classList.add('hidden');
+      steerControls.classList.add('hidden');
+      notPaidScreen.classList.remove('hidden');
+    } else {
+      notPaidScreen.classList.add('hidden');
+      if (myTeam === 'steer') {
+        tapControls.classList.add('hidden');
+        steerControls.classList.remove('hidden');
+      } else {
+        steerControls.classList.add('hidden');
+        tapControls.classList.remove('hidden');
+      }
+    }
+
     if (myTeam === 'steer') {
       const power = s.steer.power;
       steerIndicator.style.left = (50 + (power / 100) * 50) + '%';
@@ -620,6 +687,7 @@
       if (s.dropPrompt) { label = '✋ CENTER IT NOW!'; color = '#ffd54a'; }
       steerStateEl.textContent = label;
       steerStateEl.style.color = color;
+      steerSplitWarning.classList.toggle('hidden', !s.steerSplit);
       steerLeftButton.disabled = s.status !== 'playing' || notPaid;
       steerRightButton.disabled = s.status !== 'playing' || notPaid;
     } else {
@@ -638,9 +706,9 @@
       bigButton.disabled = s.status !== 'playing' || notPaid;
     }
 
-    if (s.status === 'playing') {
-      if (notPaid) roundState.textContent = 'BUY IN TO PLAY';
-      else if (s.dropPrompt) {
+    roundState.classList.toggle('hidden', notPaid);
+    if (s.status === 'playing' && !notPaid) {
+      if (s.dropPrompt) {
         if (myTeam === 'hold') roundState.textContent = 'DROP IT NOW!';
         else if (myTeam === 'steer') roundState.textContent = 'CENTER IT NOW!';
         else roundState.textContent = 'HOLD IS DROPPING IT — KEEP PUSHING';

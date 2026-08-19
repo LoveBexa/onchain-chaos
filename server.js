@@ -153,6 +153,10 @@ const players = new Map(); // socket.id -> { username, team, taps, address, paid
 const paidAddresses = new Set();
 let resetTimeout = null;
 let lastTapBroadcast = 0;
+// Tracks how recently STEER got a tap in each direction, so the tick loop can tell players
+// "your team's split" when both sides are actively being tapped at once (see STEER_SPLIT_WINDOW_MS).
+const lastSteerTapAt = { left: 0, right: 0 };
+const STEER_SPLIT_WINDOW_MS = 700;
 
 function assignTeam() {
   // balance new joiners across the three teams
@@ -283,8 +287,24 @@ async function onPayout(winner) {
   }
 }
 
+// How many of each team's assigned players have actually bought in — shown on the controller
+// so players can see e.g. "2/4 bought in" instead of just wondering why their taps feel weak.
+function paidTeamCounts() {
+  const counts = { push: 0, hold: 0, steer: 0 };
+  for (const p of players.values()) {
+    if (p.paid && counts[p.team] != null) counts[p.team]++;
+  }
+  return counts;
+}
+
 function emitLobby() {
-  io.emit('lobby', { players: Array.from(players.values()), teamCounts, potMon: (Number(potWei) / 1e18).toFixed(2), fakeMode });
+  io.emit('lobby', {
+    players: Array.from(players.values()),
+    teamCounts,
+    paidTeamCounts: paidTeamCounts(),
+    potMon: (Number(potWei) / 1e18).toFixed(2),
+    fakeMode,
+  });
 }
 
 io.on('connection', (socket) => {
@@ -295,13 +315,13 @@ io.on('connection', (socket) => {
       const team = assignTeam();
       socketTeam.set(socket.id, team);
       players.set(socket.id, {
-        username, team, taps: 0, address: null, paid: false, buyInTx: null, guess: null,
+        id: socket.id, username, team, taps: 0, address: null, paid: false, buyInTx: null, guess: null,
       });
     } else {
       players.get(socket.id).username = username;
     }
     const { team } = players.get(socket.id);
-    socket.emit('joined', { team, username, targets: TARGETS });
+    socket.emit('joined', { id: socket.id, team, username, targets: TARGETS });
     emitLobby();
   });
 
@@ -379,6 +399,7 @@ io.on('connection', (socket) => {
       if (!direction) return;
       const delta = direction === 'left' ? -scaledIncrement : scaledIncrement;
       state.steer.power = Math.max(-100, Math.min(100, state.steer.power + delta));
+      lastSteerTapAt[direction] = Date.now();
     } else {
       state[t].power = Math.min(100, state[t].power + scaledIncrement);
     }
@@ -468,9 +489,16 @@ function tick() {
     maybeFinishGuessing();
   }
 
+  const nowMs = Date.now();
+  const steerSplit =
+    nowMs - lastSteerTapAt.left < STEER_SPLIT_WINDOW_MS &&
+    nowMs - lastSteerTapAt.right < STEER_SPLIT_WINDOW_MS;
+
   io.emit('state', {
     ...state,
     teamCounts,
+    paidTeamCounts: paidTeamCounts(),
+    steerSplit,
     players: Array.from(players.values()),
     walletZone: WALLET_ZONE,
     coinStartX: COIN_START_X,
